@@ -1,12 +1,12 @@
 <?php
 /**
- * [SUMARIO] PAINEL DE QUALIDADE (V10 - MARCA + TOOLTIP ORIGINAL - SEM SCROLL)
+ * [SUMARIO] PAINEL DE QUALIDADE (V11 - VARIAVEL CENTRALIZADA DE PAGINAÇÃO)
  * ----------------------------------------------------------------------------
- *  [CONFIG] .... Configurações PHP e Paginação
- *  [STYLE] ..... CSS (Cores, Layout, Modal, Responsividade + Coluna Marca)
- *  [JS_TOOL] ... Javascript do Tooltip e Modal (ORIGINAL)
- *  [FUNC] ...... Funções de Análise, Cálculo e Extração JSON
- *  [RENDER] .... Loop Principal e HTML da Lista (SEM SCROLL INFINITO)
+ * [CONFIG] .... Configurações PHP e Paginação (EDITAR AQUI A QTDE)
+ * [STYLE] ..... CSS (Cores, Layout, Modal, Responsividade + Coluna Marca)
+ * [JS_TOOL] ... Javascript do Tooltip e Modal (ORIGINAL)
+ * [FUNC] ...... Funções de Análise, Cálculo e Extração JSON
+ * [RENDER] .... Loop Principal e HTML da Lista (SEM SCROLL INFINITO)
  * ----------------------------------------------------------------------------
  */
 namespace hardness;
@@ -14,35 +14,43 @@ namespace hardness;
 global $g, $confUsuario;
 
 // =============================================================================
-// [CONFIG] CONFIGURAÇÕES + PAGINAÇÃO
+// [CONFIG] CONFIGURAÇÕES + PAGINAÇÃO CENTRALIZADA
 // =============================================================================
 error_reporting(E_ALL & ~E_NOTICE);
 ini_set('display_errors', 1);
 
-// pageSize padrão (você pediu 150)
-$limit = 50;
+// --- [CONFIGURAÇÃO DE ITENS POR PÁGINA] ---
+// Altere este valor para mudar em todo o sistema (SQL e JS)
+$qtdePorPagina = 75;
+// ------------------------------------------
+
+$limit = $qtdePorPagina;
 
 // pagina atual via POST (AJAX) - fallback
-$page = isset($_POST['page']) ? (int)$_POST['page'] : 1;
-if ($page < 1) $page = 1;
+$page = isset($_POST['page']) ? (int) $_POST['page'] : 1;
+if ($page < 1)
+    $page = 1;
 
-// pageSize via POST (AJAX) - opcional
+// pageSize via POST (AJAX) - opcional (caso o JS envie algo diferente)
 if (isset($_POST['pageSize'])) {
-    $tmp = (int)$_POST['pageSize'];
-    if ($tmp > 0) $limit = $tmp;
+    $tmp = (int) $_POST['pageSize'];
+    if ($tmp > 0)
+        $limit = $tmp;
 }
 
 // offset legado (se alguém ainda chamar com GET offset)
 $offset = 0;
 if (isset($_GET['offset'])) {
-    $offset = (int)$_GET['offset'];
-    if ($offset < 0) $offset = 0;
-} else {
+    $offset = (int) $_GET['offset'];
+    if ($offset < 0)
+        $offset = 0;
+}
+else {
     $offset = ($page - 1) * $limit;
 }
 
 // modo ajax
-$isAjax = (isset($_POST['ajax']) && (int)$_POST['ajax'] === 1);
+$isAjax = (isset($_POST['ajax']) && (int) $_POST['ajax'] === 1);
 
 // apiMode removido (não será usado mais para scroll/infinite)
 $apiMode = 0;
@@ -51,8 +59,10 @@ $apiMode = 0;
 // [FUNC] FUNÇÕES DE CÁLCULO + MARCA JSON (MANTIDAS)
 // =============================================================================
 
-function extrairMarcaJsonAnyMarket($jsonString) {
-    if (empty($jsonString)) return "";
+function extrairMarcaJsonAnyMarket($jsonString)
+{
+    if (empty($jsonString))
+        return "";
     $obj = json_decode($jsonString);
     if (isset($obj->content[0]->brand->name)) {
         return trim($obj->content[0]->brand->name);
@@ -60,93 +70,196 @@ function extrairMarcaJsonAnyMarket($jsonString) {
     return "";
 }
 
-function analiseTitulo($titulo) {
-    $len = mb_strlen(trim($titulo));
-    $n = 0; $regra = "";
-    if ($len < 30) { $n = 1; $regra = "< 30 caracteres"; }
-    elseif ($len < 40) { $n = 2; $regra = "30 a 39 caracteres"; }
-    elseif ($len < 50) { $n = 3; $regra = "40 a 49 caracteres"; }
-    elseif ($len < 60) { $n = 4; $regra = "50 a 59 caracteres"; }
-    elseif ($len < 90) { $n = 5; $regra = "60 a 89 caracteres"; }
-    else { $n = 0; $regra = "> 90 chars (Excesso)"; }
-    return ['nota' => $n, 'valor' => $len.' chars', 'regra' => $regra, 'peso' => 3];
+function analiseTitulo($titulo)
+{
+    $len   = mb_strlen(trim($titulo));
+    $n     = 0;
+    $regra = "";
+    if ($len < 30) {
+        $n     = 1;
+        $regra = "< 30 caracteres";
+    }
+    elseif ($len < 40) {
+        $n     = 2;
+        $regra = "30 a 39 caracteres";
+    }
+    elseif ($len < 50) {
+        $n     = 3;
+        $regra = "40 a 49 caracteres";
+    }
+    elseif ($len < 60) {
+        $n     = 4;
+        $regra = "50 a 59 caracteres";
+    }
+    elseif ($len < 90) {
+        $n     = 5;
+        $regra = "60 a 89 caracteres";
+    }
+    else {
+        $n     = 0;
+        $regra = "> 90 chars (Excesso)";
+    }
+    return ['nota' => $n, 'valor' => $len . ' chars', 'regra' => $regra, 'peso' => 3];
 }
 
-function analiseDescricao($html) {
-    $txt = trim(strip_tags($html));
-    $len = mb_strlen($txt);
-    $n = 0; $regra = "";
-    if ($len < 200) { $n = 1; $regra = "< 200 caracteres"; }
-    elseif ($len < 400) { $n = 2; $regra = "200 a 399 caracteres"; }
-    elseif ($len < 600) { $n = 3; $regra = "400 a 599 caracteres"; }
-    elseif ($len < 2000) { $n = 4; $regra = "600 a 1999 caracteres"; }
-    elseif ($len <= 4000) { $n = 5; $regra = "2000 a 4000 caracteres"; }
-    else { $n = 0; $regra = "> 4000 chars (Excesso)"; }
-    return ['nota' => $n, 'valor' => $len.' chars', 'regra' => $regra, 'peso' => 3];
+function analiseDescricao($html)
+{
+    $txt   = trim(strip_tags($html));
+    $len   = mb_strlen($txt);
+    $n     = 0;
+    $regra = "";
+    if ($len < 200) {
+        $n     = 1;
+        $regra = "< 200 caracteres";
+    }
+    elseif ($len < 400) {
+        $n     = 2;
+        $regra = "200 a 399 caracteres";
+    }
+    elseif ($len < 600) {
+        $n     = 3;
+        $regra = "400 a 599 caracteres";
+    }
+    elseif ($len < 2000) {
+        $n     = 4;
+        $regra = "600 a 1999 caracteres";
+    }
+    elseif ($len <= 4000) {
+        $n     = 5;
+        $regra = "2000 a 4000 caracteres";
+    }
+    else {
+        $n     = 0;
+        $regra = "> 4000 chars (Excesso)";
+    }
+    return ['nota' => $n, 'valor' => $len . ' chars', 'regra' => $regra, 'peso' => 3];
 }
 
-function analiseImagens($row) {
+function analiseImagens($row)
+{
     $qtd = 0;
-    for ($i=1; $i<=10; $i++) if (!empty($row["D001E_Imagem_$i"])) $qtd++;
-    $n = 0; $regra = "";
-    if ($qtd < 2) { $n = 1; $regra = "< 2 imagens"; }
-    elseif ($qtd < 3) { $n = 3; $regra = "2 imagens"; }
-    elseif ($qtd < 5) { $n = 4; $regra = "3 a 4 imagens"; }
-    elseif ($qtd <= 10) { $n = 5; $regra = "5 a 10 imagens"; }
-    else { $n = 0; $regra = "> 10 imagens"; }
-    return ['nota' => $n, 'valor' => $qtd.' fotos', 'regra' => $regra, 'peso' => 3];
+    for ($i = 1; $i <= 10; $i++)
+        if (!empty($row["D001E_Imagem_$i"]))
+            $qtd++;
+    $n     = 0;
+    $regra = "";
+    if ($qtd < 2) {
+        $n     = 1;
+        $regra = "< 2 imagens";
+    }
+    elseif ($qtd < 3) {
+        $n     = 3;
+        $regra = "2 imagens";
+    }
+    elseif ($qtd < 5) {
+        $n     = 4;
+        $regra = "3 a 4 imagens";
+    }
+    elseif ($qtd <= 10) {
+        $n     = 5;
+        $regra = "5 a 10 imagens";
+    }
+    else {
+        $n     = 0;
+        $regra = "> 10 imagens";
+    }
+    return ['nota' => $n, 'valor' => $qtd . ' fotos', 'regra' => $regra, 'peso' => 3];
 }
 
-function analiseAtributos($row) {
+function analiseAtributos($row)
+{
     $count = 0;
-    if (!empty($row['D001E_EAN'])) $count++;
-    if (!empty($row['D001E_garantia'])) $count++;
-    if (!empty($row['D001E_peso'])) $count++;
-    if (!empty($row['D001E_altura'])) $count++;
-    if (!empty($row['D001E_largura'])) $count++;
-    if (!empty($row['D001E_comprimento'])) $count++;
+    if (!empty($row['D001E_EAN']))
+        $count++;
+    if (!empty($row['D001E_garantia']))
+        $count++;
+    if (!empty($row['D001E_peso']))
+        $count++;
+    if (!empty($row['D001E_altura']))
+        $count++;
+    if (!empty($row['D001E_largura']))
+        $count++;
+    if (!empty($row['D001E_comprimento']))
+        $count++;
 
-    $n = 0; $regra = "";
-    if ($count < 2) { $n = 1; $regra = "< 2 atributos"; }
-    elseif ($count < 4) { $n = 3; $regra = "2 a 3 atributos"; }
-    elseif ($count < 7) { $n = 4; $regra = "4 a 6 atributos"; }
-    elseif ($count < 20) { $n = 5; $regra = "7 a 19 atributos"; }
-    else { $n = 5; $regra = "Completo"; }
+    $n     = 0;
+    $regra = "";
+    if ($count < 2) {
+        $n     = 1;
+        $regra = "< 2 atributos";
+    }
+    elseif ($count < 4) {
+        $n     = 3;
+        $regra = "2 a 3 atributos";
+    }
+    elseif ($count < 7) {
+        $n     = 4;
+        $regra = "4 a 6 atributos";
+    }
+    elseif ($count < 20) {
+        $n     = 5;
+        $regra = "7 a 19 atributos";
+    }
+    else {
+        $n     = 5;
+        $regra = "Completo";
+    }
 
-    return ['nota' => $n, 'valor' => $count.' preenchidos', 'regra' => $regra, 'peso' => 1];
+    return ['nota' => $n, 'valor' => $count . ' preenchidos', 'regra' => $regra, 'peso' => 1];
 }
 
-function analiseImagemEspecial($row) {
-    $nota = (int)($row['D001E_pont_img_especial'] ?? 1);
-    if ($nota < 1 || $nota > 5) $nota = 1;
+function analiseImagemEspecial($row)
+{
+    $nota = (int) ($row['D001E_pont_img_especial'] ?? 1);
+    if ($nota < 1 || $nota > 5)
+        $nota = 1;
     $regra = "";
     switch ($nota) {
-        case 5: $regra = "Ambientadas, componentes, embalagem e ângulos"; break;
-        case 4: $regra = "Componentes, embalagem e ângulos"; break;
-        case 3: $regra = "Embalagem e ângulos"; break;
-        case 2: $regra = "Alguns ângulos"; break;
+        case 5:
+            $regra = "Ambientadas, componentes, embalagem e ângulos";
+            break;
+        case 4:
+            $regra = "Componentes, embalagem e ângulos";
+            break;
+        case 3:
+            $regra = "Embalagem e ângulos";
+            break;
+        case 2:
+            $regra = "Alguns ângulos";
+            break;
         case 1:
-        default: $regra = "Recortada/Zero ângulo ou pendente"; break;
+        default:
+            $regra = "Recortada/Zero ângulo ou pendente";
+            break;
     }
-    return ['nota' => $nota, 'valor' => 'Manual ('.$nota.')', 'regra' => $regra, 'peso' => 1];
+    return ['nota' => $nota, 'valor' => 'Manual (' . $nota . ')', 'regra' => $regra, 'peso' => 1];
 }
 
-function analiseVideo($row) {
+function analiseVideo($row)
+{
     return ['nota' => 0, 'valor' => 'Sem Vídeo', 'regra' => 'Sem Short (0)', 'peso' => 1];
 }
 
-function getCorNota($n) {
-    switch($n){
-        case 6: return "var(--score-6)";
-        case 5: return "var(--score-5)";
-        case 4: return "var(--score-4)";
-        case 3: return "var(--score-3)";
-        case 2: return "var(--score-2)";
-        default: return "var(--score-1)";
+function getCorNota($n)
+{
+    switch ($n) {
+        case 6:
+            return "var(--score-6)";
+        case 5:
+            return "var(--score-5)";
+        case 4:
+            return "var(--score-4)";
+        case 3:
+            return "var(--score-3)";
+        case 2:
+            return "var(--score-2)";
+        default:
+            return "var(--score-1)";
     }
 }
 
-function gerarTooltipHtml($titulo, $arrAnalise) {
+function gerarTooltipHtml($titulo, $arrAnalise)
+{
     return "<table class='tt-table'>
         <tr><th colspan='2' class='tt-head'>ANÁLISE: $titulo</th></tr>
         <tr><td class='tt-row'>Valor Atual</td><td class='tt-val'>{$arrAnalise['valor']}</td></tr>
@@ -159,17 +272,19 @@ function gerarTooltipHtml($titulo, $arrAnalise) {
 // =============================================================================
 // [RENDER] FUNÇÃO DE LINHA (MANTIDA)
 // =============================================================================
-function renderQualityRow($row) {
+function renderQualityRow($row)
+{
     // 1. Marca (com fallback JSON + update)
-    $marca = isset($row['D001E_Marca']) ? $row['D001E_Marca'] : '';
+    $marca       = isset($row['D001E_Marca']) ? $row['D001E_Marca'] : '';
     $updateMarca = false;
 
     if (empty($marca) && !empty($row['D001E_Json_Nativo'])) {
         $marcaExtraida = extrairMarcaJsonAnyMarket($row['D001E_Json_Nativo']);
         if (!empty($marcaExtraida)) {
-            $marca = $marcaExtraida;
+            $marca       = $marcaExtraida;
             $updateMarca = true;
-        } else {
+        }
+        else {
             $marca = "ND";
         }
     }
@@ -182,20 +297,26 @@ function renderQualityRow($row) {
     $resIE = analiseImagemEspecial($row);
     $resV  = analiseVideo($row);
 
-    $soma  = ($resT['nota']*3) + ($resD['nota']*3) + ($resI['nota']*3) + ($resIE['nota']*1) + ($resA['nota']*1) + ($resV['nota']*1);
+    $soma  = ($resT['nota'] * 3) + ($resD['nota'] * 3) + ($resI['nota'] * 3) + ($resIE['nota'] * 1) + ($resA['nota'] * 1) + ($resV['nota'] * 1);
     $final = floor($soma / 11);
     $final = max(1, min(5, $final));
-    if ($final == 5 && $resV['nota'] > 0) $final = 6;
+    if ($final == 5 && $resV['nota'] > 0)
+        $final = 6;
 
     // 3. UPDATE SQL (todas as pontuações + marca)
-    $idProd = (int)$row['D001E_Id'];
+    $idProd  = (int) $row['D001E_Id'];
     $sqlSets = [];
 
-    if ($row['D001E_Status_Pontuacao'] != $final)       $sqlSets[] = "D001E_Status_Pontuacao = $final";
-    if ($row['D001E_pont_titulo'] != $resT['nota'])     $sqlSets[] = "D001E_pont_titulo = {$resT['nota']}";
-    if ($row['D001E_pont_desc']   != $resD['nota'])     $sqlSets[] = "D001E_pont_desc = {$resD['nota']}";
-    if ($row['D001E_pont_img']    != $resI['nota'])     $sqlSets[] = "D001E_pont_img = {$resI['nota']}";
-    if ($row['D001E_pont_espec']  != $resA['nota'])     $sqlSets[] = "D001E_pont_espec = {$resA['nota']}";
+    if ($row['D001E_Status_Pontuacao'] != $final)
+        $sqlSets[] = "D001E_Status_Pontuacao = $final";
+    if ($row['D001E_pont_titulo'] != $resT['nota'])
+        $sqlSets[] = "D001E_pont_titulo = {$resT['nota']}";
+    if ($row['D001E_pont_desc'] != $resD['nota'])
+        $sqlSets[] = "D001E_pont_desc = {$resD['nota']}";
+    if ($row['D001E_pont_img'] != $resI['nota'])
+        $sqlSets[] = "D001E_pont_img = {$resI['nota']}";
+    if ($row['D001E_pont_espec'] != $resA['nota'])
+        $sqlSets[] = "D001E_pont_espec = {$resA['nota']}";
 
     if ($updateMarca) {
         $marcaSafe = mysql_real_escape_string($marca);
@@ -208,46 +329,77 @@ function renderQualityRow($row) {
     }
 
     // 4. Visual
-    switch($final){
-        case 6: $c="var(--score-6)"; $p=100; $l="Ótima"; break;
-        case 5: $c="var(--score-5)"; $p=85;  $l="Muito Boa"; break;
-        case 4: $c="var(--score-4)"; $p=70;  $l="Boa"; break;
-        case 3: $c="var(--score-3)"; $p=50;  $l="Média"; break;
-        case 2: $c="var(--score-2)"; $p=30;  $l="Ruim"; break;
-        default:$c="var(--score-1)"; $p=15;  $l="Muito Ruim"; break;
+    switch ($final) {
+        case 6:
+            $c = "var(--score-6)";
+            $p = 100;
+            $l = "Ótima";
+            break;
+        case 5:
+            $c = "var(--score-5)";
+            $p = 85;
+            $l = "Muito Boa";
+            break;
+        case 4:
+            $c = "var(--score-4)";
+            $p = 70;
+            $l = "Boa";
+            break;
+        case 3:
+            $c = "var(--score-3)";
+            $p = 50;
+            $l = "Média";
+            break;
+        case 2:
+            $c = "var(--score-2)";
+            $p = 30;
+            $l = "Ruim";
+            break;
+        default:
+            $c = "var(--score-1)";
+            $p = 15;
+            $l = "Muito Ruim";
+            break;
     }
 
-    $imgCapa = $row['D001E_Imagem_1'] ?: "https://via.placeholder.com/100x100?text=Sem+Img";
-    $titulo  = htmlspecialchars($row['D001E_Titulo'], ENT_QUOTES);
-    $sku     = htmlspecialchars($row['D001E_D001_Codigo_Produto'], ENT_QUOTES);
-    $descRaw = $row['D001E_Descricao'];
+    $imgCapa   = $row['D001E_Imagem_1'] ?: "https://via.placeholder.com/100x100?text=Sem+Img";
+    $titulo    = htmlspecialchars($row['D001E_Titulo'], ENT_QUOTES);
+    $sku       = htmlspecialchars($row['D001E_D001_Codigo_Produto'], ENT_QUOTES);
+    $descRaw   = $row['D001E_Descricao'];
     $marcaHtml = htmlspecialchars($marca, ENT_QUOTES);
 
     $specHtml = "";
-    if(!empty($row['D001E_EAN']))       $specHtml .= "<b>EAN:</b> {$row['D001E_EAN']}<br>";
-    if(!empty($row['D001E_garantia']))  $specHtml .= "<b>Gar:</b> {$row['D001E_garantia']}<br>";
-    if(!empty($row['D001E_peso']))      $specHtml .= "<b>Peso:</b> {$row['D001E_peso']}<br>";
-    if(!empty($row['D001E_altura']) || !empty($row['D001E_largura']) || !empty($row['D001E_comprimento'])) {
-        $specHtml .= "<b>Dim:</b> " . ($row['D001E_altura']?:0)."x".($row['D001E_largura']?:0)."x".($row['D001E_comprimento']?:0);
+    if (!empty($row['D001E_EAN']))
+        $specHtml .= "<b>EAN:</b> {$row['D001E_EAN']}<br>";
+    if (!empty($row['D001E_garantia']))
+        $specHtml .= "<b>Gar:</b> {$row['D001E_garantia']}<br>";
+    if (!empty($row['D001E_peso']))
+        $specHtml .= "<b>Peso:</b> {$row['D001E_peso']}<br>";
+    if (!empty($row['D001E_altura']) || !empty($row['D001E_largura']) || !empty($row['D001E_comprimento'])) {
+        $specHtml .= "<b>Dim:</b> " . ($row['D001E_altura'] ?: 0) . "x" . ($row['D001E_largura'] ?: 0) . "x" . ($row['D001E_comprimento'] ?: 0);
     }
-    if(empty($specHtml)) $specHtml = "<em>Sem dados</em>";
+    if (empty($specHtml))
+        $specHtml = "<em>Sem dados</em>";
 
-    // JSONs p/ modal (mantidos como no código antigo)
+    // JSONs p/ modal
     $imgs = [];
-    for($i=1; $i<=10; $i++) if(!empty($row["D001E_Imagem_$i"])) $imgs[] = $row["D001E_Imagem_$i"];
-    if(empty($imgs)) $imgs[] = "https://via.placeholder.com/600x600?text=Sem+Imagem";
+    for ($i = 1; $i <= 10; $i++)
+        if (!empty($row["D001E_Imagem_$i"]))
+            $imgs[] = $row["D001E_Imagem_$i"];
+    if (empty($imgs))
+        $imgs[] = "https://via.placeholder.com/600x600?text=Sem+Imagem";
 
-    $jsonImgs  = htmlspecialchars(json_encode($imgs), ENT_QUOTES, 'UTF-8');
-    $jsonDesc  = htmlspecialchars(json_encode($descRaw), ENT_QUOTES, 'UTF-8');
-    $marcaJs   = htmlspecialchars($marca, ENT_QUOTES);
+    $jsonImgs = htmlspecialchars(json_encode($imgs), ENT_QUOTES, 'UTF-8');
+    $jsonDesc = htmlspecialchars(json_encode($descRaw), ENT_QUOTES, 'UTF-8');
+    $marcaJs  = htmlspecialchars($marca, ENT_QUOTES);
 
     $specs     = [
         'EAN'         => $row['D001E_EAN'] ?? '',
         'Garantia'    => $row['D001E_garantia'] ?? '',
-        'Peso'        => $row['D001E_peso']        ? $row['D001E_peso'].' kg'        : '',
-        'Altura'      => $row['D001E_altura']      ? $row['D001E_altura'].' cm'      : '',
-        'Largura'     => $row['D001E_largura']     ? $row['D001E_largura'].' cm'     : '',
-        'Comprimento' => $row['D001E_comprimento'] ? $row['D001E_comprimento'].' cm' : '',
+        'Peso'        => $row['D001E_peso'] ? $row['D001E_peso'] . ' kg' : '',
+        'Altura'      => $row['D001E_altura'] ? $row['D001E_altura'] . ' cm' : '',
+        'Largura'     => $row['D001E_largura'] ? $row['D001E_largura'] . ' cm' : '',
+        'Comprimento' => $row['D001E_comprimento'] ? $row['D001E_comprimento'] . ' cm' : '',
     ];
     $jsonSpecs = htmlspecialchars(json_encode($specs), ENT_QUOTES, 'UTF-8');
 
@@ -256,31 +408,31 @@ function renderQualityRow($row) {
         <div class='thumb-box' onclick='abrirVisualizador($jsonImgs, \"$titulo\", \"$sku\", $jsonDesc, \"$marcaJs\", $jsonSpecs, {$resT['nota']}, {$resD['nota']}, {$resI['nota']}, {$resA['nota']})'><img src='$imgCapa'></div>
         <div class='col-product'><div class='prod-title'>{$row['D001E_Titulo']}</div><div class='prod-sku'>SKU: {$row['D001E_D001_Codigo_Produto']}</div></div>
         <div class='col-brand' title='$marcaHtml'>$marcaHtml</div>
-        <div class='col-box-scroll'>".($descRaw ?: '<em>Sem descrição</em>')."</div>
+        <div class='col-box-scroll'>" . ($descRaw ?: '<em>Sem descrição</em>') . "</div>
         <div class='col-box-scroll'>$specHtml</div>
 
         <div class='mini-score-box' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>
-            <div class='mini-score-val' style='background:".getCorNota($resT['nota'])."'>{$resT['nota']}</div>
+            <div class='mini-score-val' style='background:" . getCorNota($resT['nota']) . "'>{$resT['nota']}</div>
             <div class='mini-score-lbl'>TÍTULO</div>
-            <div class='tooltip-hidden-content' style='display:none'>".gerarTooltipHtml("Título", $resT)."</div>
+            <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipHtml("Título", $resT) . "</div>
         </div>
 
         <div class='mini-score-box' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>
-            <div class='mini-score-val' style='background:".getCorNota($resD['nota'])."'>{$resD['nota']}</div>
+            <div class='mini-score-val' style='background:" . getCorNota($resD['nota']) . "'>{$resD['nota']}</div>
             <div class='mini-score-lbl'>DESC</div>
-            <div class='tooltip-hidden-content' style='display:none'>".gerarTooltipHtml("Descrição", $resD)."</div>
+            <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipHtml("Descrição", $resD) . "</div>
         </div>
 
         <div class='mini-score-box' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>
-            <div class='mini-score-val' style='background:".getCorNota($resI['nota'])."'>{$resI['nota']}</div>
+            <div class='mini-score-val' style='background:" . getCorNota($resI['nota']) . "'>{$resI['nota']}</div>
             <div class='mini-score-lbl'>IMG</div>
-            <div class='tooltip-hidden-content' style='display:none'>".gerarTooltipHtml("Imagens", $resI)."</div>
+            <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipHtml("Imagens", $resI) . "</div>
         </div>
 
         <div class='mini-score-box' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>
-            <div class='mini-score-val' style='background:".getCorNota($resA['nota'])."'>{$resA['nota']}</div>
+            <div class='mini-score-val' style='background:" . getCorNota($resA['nota']) . "'>{$resA['nota']}</div>
             <div class='mini-score-lbl'>ESPEC</div>
-            <div class='tooltip-hidden-content' style='display:none'>".gerarTooltipHtml("Atributos", $resA)."</div>
+            <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipHtml("Atributos", $resA) . "</div>
         </div>
 
         <div class='col-score'>
@@ -297,10 +449,10 @@ if ($isAjax) {
     header('Content-Type: application/json; charset=UTF-8');
 
     $totalRows = 0;
-    $rsCount = mysql_query("SELECT COUNT(*) AS total FROM D001E");
+    $rsCount   = mysql_query("SELECT COUNT(*) AS total FROM D001E");
     if ($rsCount) {
-        $r = mysql_fetch_assoc($rsCount);
-        $totalRows = (int)($r['total'] ?? 0);
+        $r         = mysql_fetch_assoc($rsCount);
+        $totalRows = (int) ($r['total'] ?? 0);
     }
 
     $sql = "SELECT * FROM D001E ORDER BY D001E_Id ASC LIMIT $limit OFFSET $offset";
@@ -314,11 +466,11 @@ if ($isAjax) {
     }
 
     echo json_encode([
-        'ok' => 1,
-        'total' => $totalRows,
-        'page' => $page,
+        'ok'       => 1,
+        'total'    => $totalRows,
+        'page'     => $page,
         'pageSize' => $limit,
-        'html' => $html
+        'html'     => $html
     ]);
     exit;
 }
@@ -695,7 +847,8 @@ $style = <<<STYLE
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 STYLE;
 
-if (!$apiMode) echo $style;
+if (!$apiMode)
+    echo $style;
 
 // =============================================================================
 // [JS_TOOL] JAVASCRIPT GERAL (TOOLTIP + MODAL ORIGINAL) (MANTIDO)
@@ -735,16 +888,17 @@ if (typeof window.initHardnessTooltip === 'undefined') {
 </script>
 JS;
 
-if (!$apiMode) echo $jsTooltip;
+if (!$apiMode)
+    echo $jsTooltip;
 
 // =============================================================================
 // [RENDER] LOOP (TELA NORMAL)
 // =============================================================================
 $totalRows = 0;
-$rsCount = mysql_query("SELECT COUNT(*) AS total FROM D001E");
+$rsCount   = mysql_query("SELECT COUNT(*) AS total FROM D001E");
 if ($rsCount) {
-    $r = mysql_fetch_assoc($rsCount);
-    $totalRows = (int)($r['total'] ?? 0);
+    $r         = mysql_fetch_assoc($rsCount);
+    $totalRows = (int) ($r['total'] ?? 0);
 }
 
 $sql = "SELECT * FROM D001E ORDER BY D001E_Id ASC LIMIT $limit OFFSET 0";
@@ -753,7 +907,7 @@ $rs  = mysql_query($sql);
 echo "<div class='quality-list'>";
 
 // HTML das Regras de Tooltip (Cabeçalho) – ORIGINAL (MANTIDO)
-$tipTit = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: TÍTULO (Peso 3)</div><div class='header-rule-row'><span>< 30 chars</span><span class='header-rule-val' style='color:#dc3545'>1</span></div><div class='header-rule-row'><span>30 a 39 chars</span><span class='header-rule-val' style='color:#ffc107'>2</span></div><div class='header-rule-row'><span>40 a 49 chars</span><span class='header-rule-val' style='color:#28a745'>3</span></div><div class='header-rule-row'><span>50 a 59 chars</span><span class='header-rule-val' style='color:#28a745'>4</span></div><div class='header-rule-row'><span>60 a 89 chars</span><span class='header-rule-val' style='color:#007bff'>5</span></div></div>";
+$tipTit  = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: TÍTULO (Peso 3)</div><div class='header-rule-row'><span>< 30 chars</span><span class='header-rule-val' style='color:#dc3545'>1</span></div><div class='header-rule-row'><span>30 a 39 chars</span><span class='header-rule-val' style='color:#ffc107'>2</span></div><div class='header-rule-row'><span>40 a 49 chars</span><span class='header-rule-val' style='color:#28a745'>3</span></div><div class='header-rule-row'><span>50 a 59 chars</span><span class='header-rule-val' style='color:#28a745'>4</span></div><div class='header-rule-row'><span>60 a 89 chars</span><span class='header-rule-val' style='color:#007bff'>5</span></div></div>";
 $tipDesc = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: DESCRIÇÃO (Peso 3)</div><div class='header-rule-row'><span>< 200 chars</span><span class='header-rule-val' style='color:#dc3545'>1</span></div><div class='header-rule-row'><span>200 a 399</span><span class='header-rule-val' style='color:#ffc107'>2</span></div><div class='header-rule-row'><span>400 a 599</span><span class='header-rule-val' style='color:#28a745'>3</span></div><div class='header-rule-row'><span>600 a 1999</span><span class='header-rule-val' style='color:#28a745'>4</span></div><div class='header-rule-row'><span>2000 a 4000</span><span class='header-rule-val' style='color:#007bff'>5</span></div></div>";
 $tipImg  = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: IMAGENS (Peso 3)</div><div class='header-rule-row'><span>< 2 imgs</span><span class='header-rule-val' style='color:#dc3545'>1</span></div><div class='header-rule-row'><span>2 imgs</span><span class='header-rule-val' style='color:#ffc107'>3</span></div><div class='header-rule-row'><span>3 a 4 imgs</span><span class='header-rule-val' style='color:#28a745'>4</span></div><div class='header-rule-row'><span>5 a 10 imgs</span><span class='header-rule-val' style='color:#007bff'>5</span></div><div class='header-rule-row'><span>> 10 imgs</span><span class='header-rule-val' style='color:#dc3545'>0</span></div></div>";
 $tipSpec = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: ATRIBUTOS (Peso 1)</div><div class='header-rule-row'><span>< 2 itens</span><span class='header-rule-val' style='color:#dc3545'>1</span></div><div class='header-rule-row'><span>2 a 3 itens</span><span class='header-rule-val' style='color:#ffc107'>3</span></div><div class='header-rule-row'><span>4 a 6 itens</span><span class='header-rule-val' style='color:#28a745'>4</span></div><div class='header-rule-row'><span>7 a 19 itens</span><span class='header-rule-val' style='color:#007bff'>5</span></div><div style='font-size:10px;color:#999;margin-top:5px'>(EAN, Peso, Dimensões, Garantia)</div></div>";
@@ -794,9 +948,12 @@ echo "</div>";
 // inputs (sem PHP dentro de <script>)
 $ajaxUrl = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
 $ajaxUrl = htmlspecialchars($ajaxUrl, ENT_QUOTES, 'UTF-8');
-echo "<input type='hidden' id='hardness_total' value='".(int)$totalRows."'>";
-echo "<input type='hidden' id='hardness_pageSize' value='".(int)$limit."'>";
-echo "<input type='hidden' id='hardness_ajaxUrl' value='".$ajaxUrl."'>";
+echo "<input type='hidden' id='hardness_total' value='" . (int) $totalRows . "'>";
+
+// AQUI: Usando a variável centralizada para o input hidden
+echo "<input type='hidden' id='hardness_pageSize' value='" . (int) $limit . "'>";
+
+echo "<input type='hidden' id='hardness_ajaxUrl' value='" . $ajaxUrl . "'>";
 
 // container da paginação
 echo "<div id='demo'></div>";
@@ -804,7 +961,6 @@ echo "<div id='demo'></div>";
 echo "</div>"; // fecha .quality-list
 ?>
 
-<!-- [MODAL] VISUALIZADOR DE FICHA TÉCNICA (ORIGINAL) -->
 <div id="modalVis" class="modal-overlay" onclick="if(event.target==this) fecharVis()">
     <div class="modal-content printable-area">
         <span class="close-modal" onclick="fecharVis()">×</span>
@@ -816,11 +972,14 @@ echo "</div>"; // fecha .quality-list
         <div class="vis-info">
             <h1 class="vis-h1"><span id="visTitle">--</span><span class="vis-chip" id="visTitleScore">--</span></h1>
             <div class="vis-meta">SKU: <strong id="visSku">--</strong> | Marca: <strong id="visBrand">--</strong></div>
-            <button class="vis-btn-print" onclick="imprimirConteudoModal()"><i class="material-icons">print</i> Imprimir Ficha Técnica</button>
-            <div class="vis-header-row"><span>Descrição do Produto</span><span class="vis-chip" id="visDescScore">--</span></div>
+            <button class="vis-btn-print" onclick="imprimirConteudoModal()"><i class="material-icons">print</i> Imprimir
+                Ficha Técnica</button>
+            <div class="vis-header-row"><span>Descrição do Produto</span><span class="vis-chip"
+                    id="visDescScore">--</span></div>
             <div class="vis-desc-box" id="visDesc"></div>
             <div class="vis-specs-container">
-                <div class="vis-header-row"><span>Especificações</span><span class="vis-chip" id="visAttrScore">--</span></div>
+                <div class="vis-header-row"><span>Especificações</span><span class="vis-chip"
+                        id="visAttrScore">--</span></div>
                 <div id="visSpecsContent"></div>
             </div>
         </div>
@@ -828,227 +987,230 @@ echo "</div>"; // fecha .quality-list
 </div>
 
 <script>
-// =============================================================================
-// [PAGINAÇÃO] PLUGIN TIPO $('#demo').pagination({...}) + AJAX (sem window.location.*)
-// =============================================================================
-(function($){
-    $.fn.pagination = function(options){
-        var opts = $.extend({
-            dataSource: 0,          // aqui vai ser TOTAL (numero)
-            pageSize: 50,          // itens por página no servidor
+    // =============================================================================
+    // [PAGINAÇÃO] PLUGIN TIPO $('#demo').pagination({...}) + AJAX (sem window.location.*)
+    // =============================================================================
+    (function ($) {
+        $.fn.pagination = function (options) {
+            var opts = $.extend({
+                dataSource: 0,          // aqui vai ser TOTAL (numero)
+                pageSize: 50,           // PADRÃO GENÉRICO (será sobrescrito pelo PHP)
+                autoHidePrevious: true,
+                autoHideNext: true,
+                callback: function (data, pagination) { }
+            }, options || {});
+
+            var $wrap = this;
+            var totalNumber = parseInt(opts.dataSource, 10) || 0;
+            var pageSize = parseInt(opts.pageSize, 10) || 50;
+            var totalPages = Math.max(1, Math.ceil(totalNumber / pageSize));
+            var current = 1;
+
+            function buildBtn(label, page, cls) {
+                cls = cls || '';
+                return '<a href="javascript:void(0)" class="pg-btn ' + cls + '" data-page="' + page + '">' + label + '</a>';
+            }
+
+            function render() {
+                var html = '';
+                var prevDisabled = (current <= 1);
+                var nextDisabled = (current >= totalPages);
+
+                if (!(opts.autoHidePrevious && prevDisabled)) {
+                    html += buildBtn('&lt;', current - 1, prevDisabled ? 'disabled' : '');
+                }
+
+                // janela de páginas: 1 ... x y z ... N
+                var range = 2;
+                var start = Math.max(1, current - range);
+                var end = Math.min(totalPages, current + range);
+
+                if (start > 1) {
+                    html += buildBtn('1', 1, (current === 1 ? 'active' : ''));
+                    if (start > 2) html += '<span class="pg-dots">...</span>';
+                }
+
+                for (var i = start; i <= end; i++) {
+                    html += buildBtn(String(i), i, (current === i ? 'active' : ''));
+                }
+
+                if (end < totalPages) {
+                    if (end < totalPages - 1) html += '<span class="pg-dots">...</span>';
+                    html += buildBtn(String(totalPages), totalPages, (current === totalPages ? 'active' : ''));
+                }
+
+                if (!(opts.autoHideNext && nextDisabled)) {
+                    html += buildBtn('&gt;', current + 1, nextDisabled ? 'disabled' : '');
+                }
+
+                $wrap.html(html);
+            }
+
+            function go(page) {
+                page = parseInt(page, 10) || 1;
+                if (page < 1) page = 1;
+                if (page > totalPages) page = totalPages;
+                current = page;
+                render();
+
+                var pagination = {
+                    pageNumber: current,
+                    pageSize: pageSize,
+                    totalNumber: totalNumber,
+                    totalPages: totalPages
+                };
+                opts.callback([], pagination);
+            }
+
+            $wrap.delegate('.pg-btn', 'click', function () {
+                var $b = $(this);
+                if ($b.hasClass('disabled') || $b.hasClass('active')) return;
+                go($b.attr('data-page'));
+            });
+
+            render();
+            go(1);
+            return this;
+        };
+    })(jQuery);
+
+    jQuery(function ($) {
+        var total = parseInt($('#hardness_total').val(), 10) || 0;
+
+        // AQUI: Pega o valor do input hidden (definido pelo PHP) com fallback genérico (50)
+        var pageSize = parseInt($('#hardness_pageSize').val(), 10) || 50;
+
+        var ajaxUrl = $('#hardness_ajaxUrl').val();
+
+        var cache = {}; // cache por página (mini-cache simples)
+        var CACHE_MAX = 2;
+        var cacheOrder = [];
+
+        function cachePut(page, html) {
+            page = String(page);
+            if (typeof cache[page] === 'undefined') cacheOrder.push(page);
+            cache[page] = html;
+            while (cacheOrder.length > CACHE_MAX) {
+                var k = cacheOrder.shift();
+                delete cache[k];
+            }
+        }
+        function cacheGet(page) {
+            page = String(page);
+            if (typeof cache[page] === 'undefined') return null;
+            return cache[page];
+        }
+
+        function loadPage(page) {
+            page = parseInt(page, 10) || 1;
+
+            var cached = cacheGet(page);
+            if (cached !== null) {
+                $('#content').html(cached);
+                return;
+            }
+
+            $.ajax({
+                url: ajaxUrl,
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    ajax: 1,
+                    page: page,
+                    pageSize: pageSize // Envia o valor correto
+                },
+                success: function (res) {
+                    if (!res || !res.ok) return;
+                    $('#content').html(res.html);
+                    cachePut(page, res.html);
+                }
+            });
+        }
+
+        // salva primeira página no cache
+        cachePut(1, $('#content').html());
+
+        $('#demo').pagination({
+            dataSource: total,
+            pageSize: pageSize, // Usa a variável JS que veio do input hidden
             autoHidePrevious: true,
             autoHideNext: true,
-            callback: function(data, pagination){}
-        }, options || {});
-
-        var $wrap = this;
-        var totalNumber = parseInt(opts.dataSource, 10) || 0;
-        var pageSize = parseInt(opts.pageSize, 10) || 50;
-        var totalPages = Math.max(1, Math.ceil(totalNumber / pageSize));
-        var current = 1;
-
-        function buildBtn(label, page, cls){
-            cls = cls || '';
-            return '<a href="javascript:void(0)" class="pg-btn '+cls+'" data-page="'+page+'">'+label+'</a>';
-        }
-
-        function render(){
-            var html = '';
-            var prevDisabled = (current <= 1);
-            var nextDisabled = (current >= totalPages);
-
-            if (!(opts.autoHidePrevious && prevDisabled)) {
-                html += buildBtn('<', current-1, prevDisabled ? 'disabled' : '');
-            }
-
-            // janela de páginas: 1 ... x y z ... N
-            var range = 2;
-            var start = Math.max(1, current - range);
-            var end   = Math.min(totalPages, current + range);
-
-            if (start > 1) {
-                html += buildBtn('1', 1, (current === 1 ? 'active' : ''));
-                if (start > 2) html += '<span class="pg-dots">...</span>';
-            }
-
-            for (var i=start; i<=end; i++){
-                html += buildBtn(String(i), i, (current === i ? 'active' : ''));
-            }
-
-            if (end < totalPages) {
-                if (end < totalPages - 1) html += '<span class="pg-dots">...</span>';
-                html += buildBtn(String(totalPages), totalPages, (current === totalPages ? 'active' : ''));
-            }
-
-            if (!(opts.autoHideNext && nextDisabled)) {
-                html += buildBtn('>', current+1, nextDisabled ? 'disabled' : '');
-            }
-
-            $wrap.html(html);
-        }
-
-        function go(page){
-            page = parseInt(page, 10) || 1;
-            if (page < 1) page = 1;
-            if (page > totalPages) page = totalPages;
-            current = page;
-            render();
-
-            var pagination = {
-                pageNumber: current,
-                pageSize: pageSize,
-                totalNumber: totalNumber,
-                totalPages: totalPages
-            };
-            opts.callback([], pagination);
-        }
-
-        $wrap.delegate('.pg-btn', 'click', function(){
-            var $b = $(this);
-            if ($b.hasClass('disabled') || $b.hasClass('active')) return;
-            go($b.attr('data-page'));
-        });
-
-        render();
-        go(1);
-        return this;
-    };
-})(jQuery);
-
-jQuery(function($){
-    var total = parseInt($('#hardness_total').val(), 10) || 0;
-    var pageSize = parseInt($('#hardness_pageSize').val(), 10) || 50;
-    var ajaxUrl = $('#hardness_ajaxUrl').val(); // usa o endpoint atual
-
-    var cache = {}; // cache por página
-    var CACHE_MAX = 2;
-    var cacheOrder = [];
-
-    function cachePut(page, html){
-        page = String(page);
-        if (typeof cache[page] === 'undefined') cacheOrder.push(page);
-        cache[page] = html;
-        while (cacheOrder.length > CACHE_MAX) {
-            var k = cacheOrder.shift();
-            delete cache[k];
-        }
-    }
-    function cacheGet(page){
-        page = String(page);
-        if (typeof cache[page] === 'undefined') return null;
-        return cache[page];
-    }
-
-    function loadPage(page){
-        page = parseInt(page, 10) || 1;
-
-        var cached = cacheGet(page);
-        if (cached !== null) {
-            $('#content').html(cached);
-            return;
-        }
-
-        $.ajax({
-            url: ajaxUrl,
-            type: 'POST',
-            dataType: 'json',
-            data: {
-                ajax: 1,
-                page: page,
-                pageSize: pageSize
-            },
-            success: function(res){
-                if (!res || !res.ok) return;
-                $('#content').html(res.html);
-                cachePut(page, res.html);
+            callback: function (data, pagination) {
+                loadPage(pagination.pageNumber);
             }
         });
-    }
-
-    // salva primeira página no cache
-    cachePut(1, $('#content').html());
-
-    $('#demo').pagination({
-        dataSource: total,
-        pageSize: pageSize,
-        autoHidePrevious: true,
-        autoHideNext: true,
-        callback: function(data, pagination) {
-            loadPage(pagination.pageNumber);
-        }
     });
-});
 </script>
 
 <script>
-// =============================================================================
-// [MODAL] JS ORIGINAL (MANTIDO)
-// =============================================================================
-const mVis=document.getElementById('modalVis'),
-      vThumbs=document.getElementById('visThumbs'),
-      vHero=document.getElementById('visHero'),
-      vTitle=document.getElementById('visTitle'),
-      vSku=document.getElementById('visSku'),
-      vBrand=document.getElementById('visBrand'),
-      vDesc=document.getElementById('visDesc'),
-      vSpecsContent=document.getElementById('visSpecsContent');
-const elTitScore=document.getElementById('visTitleScore'),
-      elDescScore=document.getElementById('visDescScore'),
-      elImgScore=document.getElementById('visImgScore'),
-      elAttrScore=document.getElementById('visAttrScore');
+    // =============================================================================
+    // [MODAL] JS ORIGINAL (MANTIDO)
+    // =============================================================================
+    const mVis = document.getElementById('modalVis'),
+        vThumbs = document.getElementById('visThumbs'),
+        vHero = document.getElementById('visHero'),
+        vTitle = document.getElementById('visTitle'),
+        vSku = document.getElementById('visSku'),
+        vBrand = document.getElementById('visBrand'),
+        vDesc = document.getElementById('visDesc'),
+        vSpecsContent = document.getElementById('visSpecsContent');
+    const elTitScore = document.getElementById('visTitleScore'),
+        elDescScore = document.getElementById('visDescScore'),
+        elImgScore = document.getElementById('visImgScore'),
+        elAttrScore = document.getElementById('visAttrScore');
 
-function getMetaNota(n) {
-    n=Number(n);
-    if(n===6) return {cor:'var(--score-6)',txt:'Ótima'};
-    if(n===5) return {cor:'var(--score-5)',txt:'Muito Boa'};
-    if(n===4) return {cor:'var(--score-4)',txt:'Boa'};
-    if(n===3) return {cor:'var(--score-3)',txt:'Média'};
-    if(n===2) return {cor:'var(--score-2)',txt:'Ruim'};
-    return {cor:'var(--score-1)',txt:'Muito Ruim'};
-}
+    function getMetaNota(n) {
+        n = Number(n);
+        if (n === 6) return { cor: 'var(--score-6)', txt: 'Ótima' };
+        if (n === 5) return { cor: 'var(--score-5)', txt: 'Muito Boa' };
+        if (n === 4) return { cor: 'var(--score-4)', txt: 'Boa' };
+        if (n === 3) return { cor: 'var(--score-3)', txt: 'Média' };
+        if (n === 2) return { cor: 'var(--score-2)', txt: 'Ruim' };
+        return { cor: 'var(--score-1)', txt: 'Muito Ruim' };
+    }
 
-function abrirVisualizador(imgs, tit, sku, desc, brand, specs, nT, nD, nI, nA) {
-    vTitle.innerText=tit;
-    vSku.innerText=sku;
-    vBrand.innerText=brand;
+    function abrirVisualizador(imgs, tit, sku, desc, brand, specs, nT, nD, nI, nA) {
+        vTitle.innerText = tit;
+        vSku.innerText = sku;
+        vBrand.innerText = brand;
 
-    vDesc.innerHTML = desc ? desc : '<em>Sem descrição.</em>';
+        vDesc.innerHTML = desc ? desc : '<em>Sem descrição.</em>';
 
-    const mT=getMetaNota(nT); elTitScore.style.backgroundColor=mT.cor; elTitScore.innerText=nT+' - '+mT.txt;
-    const mD=getMetaNota(nD); elDescScore.style.backgroundColor=mD.cor; elDescScore.innerText=nD+' - '+mD.txt;
-    const mI=getMetaNota(nI); elImgScore.style.backgroundColor=mI.cor; elImgScore.innerText='Fotos: '+nI+' ('+mI.txt+')';
-    const mA=getMetaNota(nA); elAttrScore.style.backgroundColor=mA.cor; elAttrScore.innerText=nA+' - '+mA.txt;
+        const mT = getMetaNota(nT); elTitScore.style.backgroundColor = mT.cor; elTitScore.innerText = nT + ' - ' + mT.txt;
+        const mD = getMetaNota(nD); elDescScore.style.backgroundColor = mD.cor; elDescScore.innerText = nD + ' - ' + mD.txt;
+        const mI = getMetaNota(nI); elImgScore.style.backgroundColor = mI.cor; elImgScore.innerText = 'Fotos: ' + nI + ' (' + mI.txt + ')';
+        const mA = getMetaNota(nA); elAttrScore.style.backgroundColor = mA.cor; elAttrScore.innerText = nA + ' - ' + mA.txt;
 
-    vThumbs.innerHTML='';
-    if(imgs.length>0) vHero.src=imgs[0];
+        vThumbs.innerHTML = '';
+        if (imgs.length > 0) vHero.src = imgs[0];
 
-    imgs.forEach((url,idx)=>{
-        let img=document.createElement('img');
-        img.src=url; img.className='vis-mini';
-        if(idx===0) img.classList.add('active');
-        img.onclick=()=>{ vHero.src=url; document.querySelectorAll('.vis-mini').forEach(el=>el.classList.remove('active')); img.classList.add('active'); };
-        vThumbs.appendChild(img);
-    });
+        imgs.forEach((url, idx) => {
+            let img = document.createElement('img');
+            img.src = url; img.className = 'vis-mini';
+            if (idx === 0) img.classList.add('active');
+            img.onclick = () => { vHero.src = url; document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active')); img.classList.add('active'); };
+            vThumbs.appendChild(img);
+        });
 
-    let html='<table class="vis-specs-table">'; let has=false;
-    if(specs.EAN){html+=`<tr><td><strong>EAN:</strong> ${specs.EAN}</td></tr>`;has=true;}
-    if(specs.Garantia){html+=`<tr><td><strong>Garantia:</strong> ${specs.Garantia}</td></tr>`;has=true;}
-    if(specs.Peso){html+=`<tr><td><strong>Peso:</strong> ${specs.Peso}</td></tr>`;has=true;}
-    if(specs.Altura){html+=`<tr><td><strong>Altura:</strong> ${specs.Altura}</td></tr>`;has=true;}
-    if(specs.Largura){html+=`<tr><td><strong>Largura:</strong> ${specs.Largura}</td></tr>`;has=true;}
-    if(specs.Comprimento){html+=`<tr><td><strong>Comp.:</strong> ${specs.Comprimento}</td></tr>`;has=true;}
-    html+='</table>';
-    vSpecsContent.innerHTML=has?html:'<div style="color:#999;font-size:12px">Vazio</div>';
+        let html = '<table class="vis-specs-table">'; let has = false;
+        if (specs.EAN) { html += `<tr><td><strong>EAN:</strong> ${specs.EAN}</td></tr>`; has = true; }
+        if (specs.Garantia) { html += `<tr><td><strong>Garantia:</strong> ${specs.Garantia}</td></tr>`; has = true; }
+        if (specs.Peso) { html += `<tr><td><strong>Peso:</strong> ${specs.Peso}</td></tr>`; has = true; }
+        if (specs.Altura) { html += `<tr><td><strong>Altura:</strong> ${specs.Altura}</td></tr>`; has = true; }
+        if (specs.Largura) { html += `<tr><td><strong>Largura:</strong> ${specs.Largura}</td></tr>`; has = true; }
+        if (specs.Comprimento) { html += `<tr><td><strong>Comp.:</strong> ${specs.Comprimento}</td></tr>`; has = true; }
+        html += '</table>';
+        vSpecsContent.innerHTML = has ? html : '<div style="color:#999;font-size:12px">Vazio</div>';
 
-    mVis.style.display='flex';
-}
-function fecharVis(){mVis.style.display='none';}
+        mVis.style.display = 'flex';
+    }
+    function fecharVis() { mVis.style.display = 'none'; }
 
-function imprimirConteudoModal(){
-    const f=document.createElement('iframe'); f.style.display='none'; document.body.appendChild(f);
-    const d=f.contentWindow.document;
-    const s=document.getElementById('visSpecsContent').innerHTML;
-    const c=`<html><head><style>
+    function imprimirConteudoModal() {
+        const f = document.createElement('iframe'); f.style.display = 'none'; document.body.appendChild(f);
+        const d = f.contentWindow.document;
+        const s = document.getElementById('visSpecsContent').innerHTML;
+        const c = `<html><head><style>
         body{font-family:Arial,sans-serif;padding:20px;color:#333}
         h1{font-size:24px;margin-bottom:5px}
         .meta{color:#666;font-size:12px;margin-bottom:20px;border-bottom:1px solid #ccc;padding-bottom:10px}
@@ -1065,8 +1227,8 @@ function imprimirConteudoModal(){
     <h3>Descrição</h3><div class="desc">${vDesc.innerHTML}</div>
     <h3>Specs</h3><div class="specs-box">${s}</div>
     </body></html>`;
-    d.open(); d.write(c); d.close();
-    setTimeout(()=>{f.contentWindow.print();setTimeout(()=>document.body.removeChild(f),1000);},200);
-}
-document.addEventListener('keydown',e=>{if(e.key==="Escape")fecharVis()});
+        d.open(); d.write(c); d.close();
+        setTimeout(() => { f.contentWindow.print(); setTimeout(() => document.body.removeChild(f), 1000); }, 200);
+    }
+    document.addEventListener('keydown', e => { if (e.key === "Escape") fecharVis() });
 </script>
