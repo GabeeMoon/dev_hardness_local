@@ -1,12 +1,11 @@
 <?php
 /**
- * [SUMARIO] PAINEL DE QUALIDADE (V21 - 4 COLUNAS DE DADOS D009)
+ * [SUMARIO] PAINEL DE QUALIDADE (V23 - CORES AJUSTADAS GUIMEPA)
  * ----------------------------------------------------------------------------
- * [CONFIG] .... Configurações, Empresa Global
- * [STYLE] ..... CSS (Grid expandido para 4 colunas de dados)
- * [JS_TOOL] ... Javascript Tooltip
- * [FUNC] ...... Funções de Análise
- * [RENDER] .... Loop Principal (SQL com novos campos)
+ * [CONFIG] .... Configurações
+ * [STYLE] ..... CSS (Layout em Cards, Cores atualizadas)
+ * [JS_TOOL] ... Tooltip e Modal
+ * [RENDER] .... Loop Principal
  * ----------------------------------------------------------------------------
  */
 namespace hardness;
@@ -52,13 +51,13 @@ $apiMode = 0;
 if (!$isAjax) {
     echo "<div style='
             position: fixed; bottom: 15px; right: 15px;
-            background: rgba(17, 24, 39, 0.95); color: #fff;
+            background: #fff; color: #333;
             padding: 8px 14px; border-radius: 8px;
             font-size: 12px; font-family: sans-serif; font-weight: 600;
-            z-index: 999999; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            border: 1px solid rgba(255,255,255,0.15); pointer-events: none;
+            z-index: 999999; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border: 1px solid #ddd; pointer-events: none;
           '>
-            🏢 Empresa Ativa: <span style='color: #4ade80; font-size:13px;'>ID {$C004_Id}</span>
+            🏢 Empresa Ativa: <span style='color: #0098D3; font-size:13px;'>ID {$C004_Id}</span>
           </div>";
 }
 
@@ -236,23 +235,26 @@ function analiseVideo($row)
 {
     return ['nota' => 0, 'valor' => 'Sem Vídeo', 'regra' => 'Sem Short (0)', 'peso' => 1];
 }
+
+// --- CORES DA PONTUAÇÃO ---
 function getCorNota($n)
 {
     switch ($n) {
         case 6:
-            return "var(--score-6)";
+            return "#0098D3"; // Ótima (Azul Guimepa)
         case 5:
-            return "var(--score-5)";
+            return "#10b981"; // Muito Boa (Verde)
         case 4:
-            return "var(--score-4)";
+            return "#84cc16"; // Boa (Verde Claro / Lima)
         case 3:
-            return "var(--score-3)";
+            return "#eab308"; // Média (Amarelo)
         case 2:
-            return "var(--score-2)";
+            return "#fca5a5"; // Ruim (Vermelho Claro)
         default:
-            return "var(--score-1)";
+            return "#ef4444"; // Muito Ruim (Vermelho)
     }
 }
+
 function gerarTooltipHtml($titulo, $arrAnalise)
 {
     return "<table class='tt-table'>
@@ -319,34 +321,35 @@ function renderQualityRow($row)
         mysql_query($sqlUpdate);
     }
 
+    // Cores e Labels - DEFINIÇÃO DAS CORES PRINCIPAIS
     switch ($final) {
         case 6:
-            $c = "var(--score-6)";
+            $c = "#0098D3";
             $p = 100;
             $l = "Ótima";
             break;
         case 5:
-            $c = "var(--score-5)";
+            $c = "#10b981";
             $p = 85;
             $l = "Muito Boa";
             break;
         case 4:
-            $c = "var(--score-4)";
+            $c = "#84cc16";
             $p = 70;
             $l = "Boa";
             break;
         case 3:
-            $c = "var(--score-3)";
+            $c = "#eab308";
             $p = 50;
             $l = "Média";
             break;
         case 2:
-            $c = "var(--score-2)";
+            $c = "#fca5a5";
             $p = 30;
             $l = "Ruim";
             break;
         default:
-            $c = "var(--score-1)";
+            $c = "#ef4444";
             $p = 15;
             $l = "Muito Ruim";
             break;
@@ -369,51 +372,59 @@ function renderQualityRow($row)
     if (!empty($row['D001E_altura']))
         $specHtml .= "<b>Dim:</b> " . ($row['D001E_altura'] ?: 0) . "x" . ($row['D001E_largura'] ?: 0) . "x" . ($row['D001E_comprimento'] ?: 0);
     if (empty($specHtml))
-        $specHtml = "<em>Sem dados</em>";
+        $specHtml = "<span style='color:#bbb'>Vazio</span>";
 
-    // --- DADOS D009 (4 COLUNAS) ---
-    $freqVenda = !empty($row['D009_Frequencia_Venda']) ? $row['D009_Frequencia_Venda'] : '-';
+    // --- DADOS D009 (Formatados) ---
+    $freqVenda = !empty($row['D009_Frequencia_Venda']) ? $row['D009_Frequencia_Venda'] : '<b>0</b>';
     $custoVal  = isset($row['D009_Valor_Custo_Unitario']) ? (float) $row['D009_Valor_Custo_Unitario'] : 0;
     $estTab    = isset($row['D009_Quantidade_Estoque_Tabela']) ? (int) $row['D009_Quantidade_Estoque_Tabela'] : 0;
     $estLiq    = isset($row['D009_Quantidade_Estoque_Liquido']) ? (int) $row['D009_Quantidade_Estoque_Liquido'] : 0;
 
-    $custoHtml = ($custoVal > 0) ? "<span style='color:#dc3545; font-weight:600;'>R$ " . number_format($custoVal, 2, ',', '.') . "</span>" : "<span style='color:#999'>-</span>";
+    // Logica Visual Custo (Azul) e Zeros (Negrito)
+    $custoHtml  = ($custoVal > 0) ? "<span style='color:#0098D3; font-weight:700;'>R$ " . number_format($custoVal, 2, ',', '.') . "</span>" : "<b>0</b>";
+    $estTabHtml = ($estTab > 0) ? $estTab : "<b>0</b>";
+    $estLiqHtml = ($estLiq > 0) ? $estLiq : "<b>0</b>";
     // ------------------------------
 
     return "
     <div class='quality-row'>
         <div class='thumb-box' onclick='abrirVisualizador(\"$sku\")'><img src='$imgCapa'></div>
-        <div class='col-product'><div class='prod-title'>{$row['D001E_Titulo']}</div><div class='prod-sku'>SKU: {$row['D001E_D001_Codigo_Produto']}</div></div>
-        <div class='col-brand' title='$marcaHtml'>$marcaHtml</div>
         
-        <div class='col-center' style='font-weight:700; color:#4b5563;'>$freqVenda</div>
-        <div class='col-center'>$custoHtml</div>
-        <div class='col-center'>$estTab</div>
-        <div class='col-center' style='font-weight:700; color:#000;'>$estLiq</div>
+        <div class='col-info'>
+            <div class='prod-title'>{$row['D001E_Titulo']}</div>
+            <div class='prod-sub'>
+                <span class='prod-sku'>SKU: {$row['D001E_D001_Codigo_Produto']}</span>
+                <span class='prod-brand' title='$marcaHtml'>$marcaHtml</span>
+            </div>
+        </div>
+        
+        <div class='col-metrics'>
+            <div class='metric-cell'><span class='lbl'>Freq</span> <span class='val'>$freqVenda</span></div>
+            <div class='metric-cell'><span class='lbl'>Custo</span> <span class='val'>$custoHtml</span></div>
+            <div class='metric-cell'><span class='lbl'>Est.Tab</span> <span class='val'>$estTabHtml</span></div>
+            <div class='metric-cell'><span class='lbl'>Est.Liq</span> <span class='val'>$estLiqHtml</span></div>
+        </div>
+
         <div class='col-box-scroll'>" . ($descRaw ?: '<em>Sem descrição</em>') . "</div>
         <div class='col-box-scroll'>$specHtml</div>
 
         <div class='mini-score-box' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>
             <div class='mini-score-val' style='background:" . getCorNota($resT['nota']) . "'>{$resT['nota']}</div>
-            <div class='mini-score-lbl'>TÍTULO</div>
             <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipHtml("Título", $resT) . "</div>
         </div>
 
         <div class='mini-score-box' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>
             <div class='mini-score-val' style='background:" . getCorNota($resD['nota']) . "'>{$resD['nota']}</div>
-            <div class='mini-score-lbl'>DESC</div>
             <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipHtml("Descrição", $resD) . "</div>
         </div>
 
         <div class='mini-score-box' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>
             <div class='mini-score-val' style='background:" . getCorNota($resI['nota']) . "'>{$resI['nota']}</div>
-            <div class='mini-score-lbl'>IMG</div>
             <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipHtml("Imagens", $resI) . "</div>
         </div>
 
         <div class='mini-score-box' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>
             <div class='mini-score-val' style='background:" . getCorNota($resA['nota']) . "'>{$resA['nota']}</div>
-            <div class='mini-score-lbl'>ESPEC</div>
             <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipHtml("Atributos", $resA) . "</div>
         </div>
 
@@ -439,10 +450,10 @@ if ($isAjax) {
                           T2.D009_Valor_Custo_Unitario, 
                           T2.D009_Quantidade_Estoque_Tabela, 
                           T2.D009_Quantidade_Estoque_Liquido
-                   FROM D001E AS T1
-                   LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001E_D001_Id
-                   LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id)
-                   WHERE T1.D001E_D001_Codigo_Produto = '$skuBusca' LIMIT 1";
+                    FROM D001E AS T1
+                    LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001E_D001_Id
+                    LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id)
+                    WHERE T1.D001E_D001_Codigo_Produto = '$skuBusca' LIMIT 1";
         $rsDet  = mysql_query($sqlDet);
 
         if ($rsDet && mysql_num_rows($rsDet) > 0) {
@@ -504,7 +515,7 @@ if ($isAjax) {
         $totalRows = (int) ($r['total'] ?? 0);
     }
 
-    // --- SQL LISTA (ATUALIZADO PARA 4 COLUNAS D009) ---
+    // --- SQL LISTA ---
     $sql = "SELECT T1.*, 
                    T2.D009_Frequencia_Venda, 
                    T2.D009_Valor_Custo_Unitario,
@@ -515,7 +526,7 @@ if ($isAjax) {
             LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id)
             GROUP BY T1.D001E_Id
             ORDER BY T1.D001E_Id ASC LIMIT $limit OFFSET $offset";
-    // --------------------------------------------------
+    // -----------------
 
     $rs   = mysql_query($sql);
     $html = "";
@@ -540,110 +551,167 @@ if ($isAjax) {
 // =============================================================================
 $style = <<<STYLE
 <style>
-    :root { --bg-page: #2F384D; --bg-card: #ffffff; --score-6: #004085; --score-5: #28a745; --score-4: #85e085; --score-3: #ffc107; --score-2: #ffadad; --score-1: #dc3545; --primary-color: #2F384D; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background-color: var(--bg-page); margin: 0; padding: 16px; color: #1f2433; }
-    .quality-list { background: var(--bg-card); border-radius: 16px; box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18); overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); }
-    
-    /* GRID ATUALIZADO: 4 COLUNAS DE DADOS NO MEIO */
-    /* Foto | Prod | Marca | Freq | Custo | Tab | Liq | Desc | Espec | Scores... */
+    /* VARIAVEIS E GERAL */
+    :root { 
+        --bg-body: #f3f4f6;
+        --card-bg: #ffffff;
+        --text-color: #1f2937;
+        --border-color: #e5e7eb;
+        
+        /* CORES NOVAS */
+        --score-6: #0098D3; /* Azul Guimepa */
+        --score-5: #10b981; /* Verde */
+        --score-4: #84cc16; /* Verde Claro (Lima) */
+        --score-3: #eab308; /* Amarelo */
+        --score-2: #fca5a5; /* Vermelho Claro */
+        --score-1: #ef4444; /* Vermelho */
+        
+        --primary: #0098D3; /* Azul Guimepa Principal */
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background-color: var(--bg-body); margin: 0; padding: 20px; color: var(--text-color); }
+    .quality-list { max-width: 1500px; margin: 0 auto; }
+
+    /* GRID LAYOUT DA TABELA */
+    /* Foto(70) | InfoProd(1.5fr) | Métricas(1fr) | Desc(1.2fr) | Specs(0.8fr) | T(45) | D(45) | I(45) | E(45) | Geral(80) */
     .quality-header, .quality-row { 
         display: grid; 
-        grid-template-columns: 70px 1.4fr 0.7fr 0.5fr 0.6fr 0.5fr 0.5fr 1.2fr 0.9fr 48px 48px 48px 48px 80px; 
-        gap: 8px; 
-        align-items: stretch; 
+        grid-template-columns: 70px 1.5fr 1fr 1.2fr 0.8fr 45px 45px 45px 45px 80px; 
+        gap: 12px; 
+        align-items: center; 
     }
-    
-    .quality-header { background: #f5f6fa; padding: 12px 18px; font-size: 11px; font-weight: 700; color: #6b7280; border-bottom: 1px solid #e5e7eb; text-transform: uppercase; letter-spacing: 0.04em; }
-    .quality-row { border-bottom: 1px solid #f0f1f5; padding: 12px 18px; transition: background 0.18s ease; background: #ffffff; }
-    .quality-row:nth-child(even) { background: #fbfcff; }
-    .quality-row:hover { background-color: #f3f5ff; }
-    
-    #content { width: 100%; }
-    .thumb-box { width: 62px; height: 62px; border-radius: 12px; border: 1px solid #e5e7eb; padding: 4px; background: linear-gradient(135deg, #ffffff, #f4f5fb); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-    .thumb-box img { width: 100%; height: 100%; object-fit: contain; }
-    .thumb-box:hover { border-color: var(--primary-color); transform: scale(1.05); }
-    .col-product { display: flex; flex-direction: column; justify-content: center; }
-    .prod-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; color: #111827; }
-    .prod-sku { font-size: 10px; color: #6b7280; background: #eef2ff; padding: 3px 8px; border-radius: 999px; display: inline-flex; font-weight: 600; }
-    .col-brand { font-size: 11px; font-weight: 600; color: #4b5563; background: #fff8f0; padding: 4px 8px; border-radius: 6px; border: 1px solid #ffe0d0; display: flex; align-items: center; justify-content: center; height: fit-content; align-self: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .col-box-scroll { font-size: 11px; color: #4b5563; max-height: 78px; overflow-y: auto; background: #f9fafb; padding: 8px 10px; border-radius: 10px; border: 1px solid #e5e7eb; }
-    
-    .col-center { display:flex; align-items:center; justify-content:center; font-size:11px; color:#111827; text-align:center; }
 
-    .mini-score-box { display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: help; position: relative; padding: 4px 0; }
-    .mini-score-val { width: 30px; height: 30px; border-radius: 999px; background: #e5e7eb; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; color: #ffffff; margin-bottom: 3px; }
-    .mini-score-lbl { font-size: 8px; color: #6b7280; text-transform: uppercase; }
-    .col-score { display: flex; flex-direction: column; align-items: center; border-left: 1px solid #e5e7eb; padding-left: 8px; }
-    .score-circle { position: relative; width: 52px; height: 52px; border-radius: 50%; background: conic-gradient(var(--color) calc(var(--percent) * 1%), #e5e7eb 0); display: flex; align-items: center; justify-content: center; margin-bottom: 4px; }
-    .score-circle::before { content: ""; position: absolute; width: 40px; height: 40px; border-radius: 50%; background: #ffffff; }
-    .score-number { position: relative; font-size: 16px; font-weight: 800; z-index: 1; color: #111827; }
-    .score-label { font-size: 9px; font-weight: 600; color: #374151; text-transform: uppercase; }
+    /* HEADER */
+    .quality-header { 
+        padding: 0 16px 12px 16px; 
+        font-size: 11px; font-weight: 700; color: #6b7280; 
+        text-transform: uppercase; letter-spacing: 0.03em;
+    }
+    .quality-header > div { display: flex; align-items: center; justify-content: center; text-align: center; }
+    .quality-header > div:nth-child(2), 
+    .quality-header > div:nth-child(4), 
+    .quality-header > div:nth-child(5) { justify-content: flex-start; text-align: left; }
+
+    /* LINHA DE DADOS (CARD) */
+    .quality-row { 
+        background: var(--card-bg);
+        border-radius: 10px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        padding: 14px 16px;
+        margin-bottom: 10px;
+        border: 1px solid transparent;
+        transition: all 0.2s;
+    }
+    .quality-row:hover { 
+        transform: translateY(-2px); 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
+        border-color: #d1d5db;
+    }
+
+    /* COL 1: FOTO */
+    .thumb-box { 
+        width: 64px; height: 64px; 
+        border-radius: 8px; border: 1px solid #e5e7eb; 
+        padding: 3px; background: #fff; 
+        cursor: pointer; display: flex; align-items: center; justify-content: center; 
+    }
+    .thumb-box img { width: 100%; height: 100%; object-fit: contain; }
+
+    /* COL 2: PRODUTO + SKU + MARCA */
+    .col-info { display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+    .prod-title { font-size: 13px; font-weight: 600; color: #111827; line-height: 1.3; }
+    .prod-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .prod-sku { font-size: 10px; color: #4b5563; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: monospace; border: 1px solid #e5e7eb; }
+    .prod-brand { font-size: 10px; font-weight: 700; color: var(--primary); white-space: nowrap; }
+
+    /* COL 3: MÉTRICAS (GRID 2x2) */
+    .col-metrics { 
+        display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px;
+        background: #f9fafb; padding: 6px 10px; border-radius: 8px; border: 1px solid #f3f4f6;
+    }
+    .metric-cell { display: flex; justify-content: space-between; align-items: center; font-size: 11px; }
+    .metric-cell .lbl { color: #9ca3af; font-size: 10px; font-weight: 600; text-transform: uppercase; margin-right: 4px; }
+    .metric-cell .val { color: #374151; }
+
+    /* COL 4 & 5: SCROLLS */
+    .col-box-scroll { 
+        font-size: 11px; color: #4b5563; max-height: 64px; overflow-y: auto; 
+        background: #fff; padding: 4px; line-height: 1.4; border-radius: 4px; border: 1px solid #f3f4f6;
+    }
+    .col-box-scroll::-webkit-scrollbar { width: 3px; }
+    .col-box-scroll::-webkit-scrollbar-thumb { background: #d1d5db; }
+
+    /* COL 6,7,8,9: SCORES */
+    .mini-score-box { display: flex; flex-direction: column; align-items: center; cursor: help; }
+    .mini-score-val { 
+        width: 28px; height: 28px; border-radius: 6px; 
+        background: #e5e7eb; color: #fff; 
+        display: flex; align-items: center; justify-content: center; 
+        font-weight: 700; font-size: 12px; 
+    }
+
+    /* COL 10: GERAL */
+    .col-score { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .score-circle { 
+        position: relative; width: 44px; height: 44px; border-radius: 50%; 
+        background: conic-gradient(var(--color) calc(var(--percent) * 1%), #e5e7eb 0); 
+        display: flex; align-items: center; justify-content: center; margin-bottom: 2px; 
+    }
+    .score-circle::before { content: ""; position: absolute; width: 34px; height: 34px; border-radius: 50%; background: #ffffff; }
+    .score-number { position: relative; font-size: 14px; font-weight: 800; z-index: 1; color: #111827; }
+    .score-label { font-size: 9px; font-weight: 700; color: #6b7280; text-transform: uppercase; }
 
     /* TOOLTIP */
-    #hardness-custom-tooltip { background: #ffffff; border: 1px solid #e4e6eb; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25); border-radius: 10px; padding: 0; z-index: 999999; font-size: 12px; color: #111827; min-width: 230px; }
-    .tt-table { width: 100%; border-collapse: collapse; margin: 0; }
-    .tt-head { background: #f3f4ff; border-bottom: 1px solid #e5e7eb; padding: 10px 12px; font-weight: 700; font-size: 11px; text-transform: uppercase; }
-    .tt-row { border-bottom: 1px solid #f3f4f6; padding: 8px 12px; color: #4b5563; font-size: 11px; }
-    .tt-val { border-bottom: 1px solid #f3f4f6; padding: 8px 12px; color: #111827; text-align: right; font-weight: 600; font-size: 11px; }
-    .tt-foot td { background: #f9fafb; font-weight: 800; color: var(--primary-color); border-top: 2px solid #e5e7eb; padding: 10px 12px; border-radius: 0 0 10px 10px; }
-    .header-tooltip-content { padding: 10px 12px; }
-    .header-tooltip-title { font-weight: 700; color: var(--primary-color); border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 8px; font-size: 12px; text-transform: uppercase; }
-    .header-rule-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; color: #4b5563; }
+    #hardness-custom-tooltip { background: #ffffff; border: 1px solid #e4e6eb; box-shadow: 0 8px 20px rgba(0,0,0,0.15); border-radius: 8px; padding: 0; z-index: 999999; font-size: 12px; color: #111827; min-width: 230px; }
+    .tt-table { width: 100%; border-collapse: collapse; }
+    .tt-head { background: #f3f4f6; padding: 8px 12px; font-weight: 700; font-size: 11px; text-transform: uppercase; text-align: left; color: #4b5563; }
+    .tt-row { border-bottom: 1px solid #f3f4f6; padding: 6px 12px; color: #6b7280; font-size: 11px; }
+    .tt-val { border-bottom: 1px solid #f3f4f6; padding: 6px 12px; color: #111827; text-align: right; font-weight: 700; font-size: 11px; }
+    .tt-foot td { background: #f0f9ff; font-weight: 800; color: var(--primary); padding: 8px 12px; }
+    
+    .header-tooltip-content { padding: 10px; }
+    .header-tooltip-title { font-weight: 700; color: var(--primary); border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; }
+    .header-rule-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px; color: #4b5563; }
 
     /* MODAL */
-    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.88); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(5px); padding: 10px; box-sizing: border-box; }
-    .modal-content { background: #ffffff; width: 100%; max-width: 1220px; height: 88%; border-radius: 18px; position: relative; display: flex; overflow: hidden; box-shadow: 0 24px 48px rgba(15, 23, 42, 0.55); border: 1px solid rgba(15, 23, 42, 0.15); }
-    .close-modal { position: absolute; top: 14px; right: 18px; font-size: 26px; cursor: pointer; z-index: 100; color: #4b5563; width: 30px; height: 30px; border-radius: 999px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-    .close-modal:hover { background: #f3f4f6; color: #111827; }
-    .vis-thumbs { width: 120px; background: #f5f6fa; padding: 20px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid #e5e7eb; }
-    .vis-mini { width: 100%; height: 80px; object-fit: cover; border: 2px solid transparent; border-radius: 10px; cursor: pointer; background: #ffffff; }
-    .vis-mini.active { border-color: var(--primary-color); box-shadow: 0 4px 10px rgba(15, 23, 42, 0.4); }
-    .vis-main { flex: 1; display: flex; justify-content: center; align-items: center; background: radial-gradient(circle at top left, #f9fafb, #e5e7eb); padding: 30px; position: relative; }
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(3px); padding: 20px; }
+    .modal-content { background: #fff; width: 100%; max-width: 1100px; height: 90%; border-radius: 12px; position: relative; display: flex; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+    .close-modal { position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; z-index: 100; color: #9ca3af; }
+    .close-modal:hover { color: #333; }
+    .vis-thumbs { width: 100px; background: #f9fafb; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; border-right: 1px solid #e5e7eb; }
+    .vis-mini { width: 100%; height: 70px; object-fit: contain; border: 2px solid transparent; border-radius: 6px; cursor: pointer; background: #fff; border: 1px solid #f1f1f1; }
+    .vis-mini.active { border-color: var(--primary); }
+    .vis-main { flex: 1; display: flex; justify-content: center; align-items: center; background: #fff; padding: 20px; position: relative; }
     .vis-main img { max-width: 100%; max-height: 100%; object-fit: contain; }
-    .vis-score-badge { position: absolute; top: 18px; left: 18px; padding: 4px 14px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #ffffff; background: var(--primary-color); z-index: 10; text-transform: uppercase; }
-    .vis-info { width: 360px; border-left: 1px solid #e5e7eb; padding: 24px 24px 20px 24px; overflow-y: auto; background: #ffffff; display: flex; flex-direction: column; gap: 14px; }
-    .vis-h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px 0; line-height: 1.3; color: #111827; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-    .vis-chip { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #ffffff; background: var(--primary-color); white-space: nowrap; display: inline-block; }
-    .vis-meta { font-size: 13px; color: #6b7280; margin-bottom: 6px; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; }
-    .vis-specs-container { margin-top: 6px; padding-top: 10px; border-top: 1px solid #e5e7eb; }
-    .vis-specs-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .vis-specs-table td { padding: 6px 0; border-bottom: 1px solid #f3f4f6; color: #4b5563; }
-    .vis-btn-print { width: 100%; padding: 11px 12px; background: var(--primary-color); color: #ffffff; border: none; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px; }
-    .vis-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 700; font-size: 13px; color: #111827; }
-    .vis-desc-box { font-size: 13px; line-height: 1.6; color: #4b5563; background: #f9fafb; padding: 14px; border-radius: 10px; border: 1px solid #e5e7eb; max-height: 200px; overflow-y: auto; }
-    
-    @media (max-width: 1200px) { .quality-header, .quality-row { grid-template-columns: 60px 1.4fr 0.7fr 0.5fr 0.6fr 0.5fr 0.5fr 1.0fr 0.9fr 44px 44px 44px 44px 72px; gap: 8px; } .vis-info { width: 320px; } }
+    .vis-score-badge { position: absolute; top: 15px; left: 15px; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; color: #fff; background: var(--primary); z-index: 10; }
+    .vis-info { width: 350px; border-left: 1px solid #e5e7eb; padding: 20px; overflow-y: auto; background: #fff; display: flex; flex-direction: column; gap: 15px; }
+    .vis-h1 { font-size: 18px; font-weight: 700; margin: 0; color: #111827; line-height: 1.3; }
+    .vis-chip { padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; color: #fff; background: var(--primary); display: inline-block; vertical-align: middle; margin-left: 6px; }
+    .vis-meta { font-size: 12px; color: #6b7280; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; }
+    .vis-btn-print { width: 100%; padding: 10px; background: #1f2937; color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .vis-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-weight: 700; font-size: 12px; color: #111827; }
+    .vis-desc-box { font-size: 12px; line-height: 1.5; color: #4b5563; background: #f9fafb; padding: 10px; border-radius: 6px; border: 1px solid #e5e7eb; max-height: 150px; overflow-y: auto; }
+    .vis-specs-table td { padding: 4px 0; border-bottom: 1px solid #f3f4f6; color: #4b5563; font-size: 12px; }
+
+    /* PAGINACAO */
+    #demo { padding: 20px 0; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:5px; }
+    #demo .pg-btn { border: 1px solid #d1d5db; background:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; color:#374151; }
+    #demo .pg-btn:hover { background: #f3f4f6; }
+    #demo .pg-btn.active { background: var(--primary); border-color: var(--primary); color:#fff; }
+
+    /* RESPONSIVO */
+    @media (max-width: 1200px) { 
+        .quality-header, .quality-row { grid-template-columns: 60px 1.4fr 160px 1fr 0.8fr 40px 40px 40px 40px 70px; gap: 8px; }
+        .col-metrics { grid-template-columns: 1fr; gap: 2px; } /* Métricas viram lista */
+    }
     @media (max-width: 900px) {
         .quality-header { display: none; }
-        .quality-row { grid-template-columns: 70px 1fr; grid-template-rows: auto; }
-        .quality-row > div:nth-child(1) { grid-column: 1 / 2; grid-row: 1 / 2; }
-        .quality-row > div:nth-child(2) { grid-column: 2 / 3; grid-row: 1 / 2; }
-        .quality-row > div:nth-child(3) { grid-column: 1 / 3; grid-row: 2 / 3; }
-        
-        /* 4 Colunas no mobile */
-        .quality-row > div:nth-child(4) { grid-column: 1 / 2; grid-row: 3 / 4; text-align:left; justify-content:flex-start; font-weight:bold; }
-        .quality-row > div:nth-child(5) { grid-column: 2 / 3; grid-row: 3 / 4; text-align:left; justify-content:flex-start; }
-        .quality-row > div:nth-child(6) { grid-column: 1 / 2; grid-row: 4 / 5; text-align:left; justify-content:flex-start; }
-        .quality-row > div:nth-child(7) { grid-column: 2 / 3; grid-row: 4 / 5; text-align:left; justify-content:flex-start; }
-        
-        .quality-row > div:nth-child(8) { grid-column: 1 / 3; grid-row: 5 / 6; }
-        .quality-row > div:nth-child(9) { grid-column: 1 / 3; grid-row: 6 / 7; }
-        
-        .quality-row > div:nth-child(10){ grid-column: 1 / 2; grid-row: 7 / 8; }
-        .quality-row > div:nth-child(11){ grid-column: 2 / 3; grid-row: 7 / 8; }
-        .quality-row > div:nth-child(12){ grid-column: 1 / 2; grid-row: 8 / 9; }
-        .quality-row > div:nth-child(13){ grid-column: 2 / 3; grid-row: 8 / 9; }
-        .quality-row > div:nth-child(14){ grid-column: 1 / 3; grid-row: 9 / 10; margin-top: 6px; }
-        
-        .col-score { border-left: none; border-top: 1px solid #e5e7eb; padding-left: 0; padding-top: 8px; }
-        .modal-content { flex-direction: column; height: 92%; }
-        .vis-thumbs { width: 100%; height: 90px; flex-direction: row; border-right: none; border-bottom: 1px solid #e5e7eb; padding: 10px; }
-        .vis-info { width: 100%; border-left: none; border-top: 1px solid #e5e7eb; }
+        .quality-row { display: flex; flex-direction: column; align-items: stretch; gap: 10px; position: relative; padding-top: 15px; }
+        .thumb-box { align-self: flex-start; }
+        .col-info { margin-left: 70px; margin-top: -70px; min-height: 60px; justify-content: center; } /* Foto ao lado do Texto */
+        .col-metrics { display: flex; justify-content: space-between; flex-wrap: wrap; margin-top: 10px; }
+        .col-score { position: absolute; top: 10px; right: 10px; }
+        .mini-score-box { display: inline-block; margin: 0 5px; }
     }
-    #demo { padding: 12px 18px; background: #f5f6fa; border-top: 1px solid #e5e7eb; display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
-    #demo .pg-btn { border: 1px solid #e5e7eb; background:#fff; padding:6px 10px; border-radius:10px; cursor:pointer; font-size:12px; font-weight:800; color:#111827; }
-    #demo .pg-btn.disabled { opacity: .45; cursor:not-allowed; }
-    #demo .pg-btn.active { background: var(--primary-color); border-color: var(--primary-color); color:#fff; }
 </style>
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 STYLE;
@@ -653,21 +721,26 @@ if (!$apiMode)
 // =============================================================================
 // [RENDER] HTML ESTRUTURA
 // =============================================================================
-$tipTit  = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: TÍTULO (Peso 3)</div><div class='header-rule-row'><span>< 30 chars</span><span class='header-rule-val' style='color:#dc3545'>1</span></div><div class='header-rule-row'><span>30 a 39 chars</span><span class='header-rule-val' style='color:#ffc107'>2</span></div><div class='header-rule-row'><span>40 a 49 chars</span><span class='header-rule-val' style='color:#28a745'>3</span></div><div class='header-rule-row'><span>50 a 59 chars</span><span class='header-rule-val' style='color:#28a745'>4</span></div><div class='header-rule-row'><span>60 a 89 chars</span><span class='header-rule-val' style='color:#007bff'>5</span></div></div>";
-$tipDesc = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: DESCRIÇÃO (Peso 3)</div><div class='header-rule-row'><span>< 200 chars</span><span class='header-rule-val' style='color:#dc3545'>1</span></div><div class='header-rule-row'><span>200 a 399</span><span class='header-rule-val' style='color:#ffc107'>2</span></div><div class='header-rule-row'><span>400 a 599</span><span class='header-rule-val' style='color:#28a745'>3</span></div><div class='header-rule-row'><span>600 a 1999</span><span class='header-rule-val' style='color:#28a745'>4</span></div><div class='header-rule-row'><span>2000 a 4000</span><span class='header-rule-val' style='color:#007bff'>5</span></div></div>";
-$tipImg  = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: IMAGENS (Peso 3)</div><div class='header-rule-row'><span>< 2 imgs</span><span class='header-rule-val' style='color:#dc3545'>1</span></div><div class='header-rule-row'><span>2 imgs</span><span class='header-rule-val' style='color:#ffc107'>3</span></div><div class='header-rule-row'><span>3 a 4 imgs</span><span class='header-rule-val' style='color:#28a745'>4</span></div><div class='header-rule-row'><span>5 a 10 imgs</span><span class='header-rule-val' style='color:#007bff'>5</span></div><div class='header-rule-row'><span>> 10 imgs</span><span class='header-rule-val' style='color:#dc3545'>0</span></div></div>";
-$tipSpec = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: ATRIBUTOS (Peso 1)</div><div class='header-rule-row'><span>< 2 itens</span><span class='header-rule-val' style='color:#dc3545'>1</span></div><div class='header-rule-row'><span>2 a 3 itens</span><span class='header-rule-val' style='color:#ffc107'>3</span></div><div class='header-rule-row'><span>4 a 6 itens</span><span class='header-rule-val' style='color:#28a745'>4</span></div><div class='header-rule-row'><span>7 a 19 itens</span><span class='header-rule-val' style='color:#007bff'>5</span></div></div>";
+// Strings HTML dos tooltips de cabeçalho
+// CORES ATUALIZADAS NOS TOOLTIPS
+$tipTit  = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: TÍTULO (Peso 3)</div><div class='header-rule-row'><span>< 30 chars</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>30 a 39 chars</span><span style='color:#eab308'>2</span></div><div class='header-rule-row'><span>40 a 49 chars</span><span style='color:#10b981'>3</span></div><div class='header-rule-row'><span>50 a 59 chars</span><span style='color:#10b981'>4</span></div><div class='header-rule-row'><span>60 a 89 chars</span><span style='color:#0098D3'>5</span></div></div>";
+$tipDesc = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: DESCRIÇÃO (Peso 3)</div><div class='header-rule-row'><span>< 200 chars</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>200 a 399</span><span style='color:#eab308'>2</span></div><div class='header-rule-row'><span>400 a 599</span><span style='color:#10b981'>3</span></div><div class='header-rule-row'><span>600 a 1999</span><span style='color:#10b981'>4</span></div><div class='header-rule-row'><span>2000 a 4000</span><span style='color:#0098D3'>5</span></div></div>";
+$tipImg  = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: IMAGENS (Peso 3)</div><div class='header-rule-row'><span>< 2 imgs</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>2 imgs</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>3 a 4 imgs</span><span style='color:#10b981'>4</span></div><div class='header-rule-row'><span>5 a 10 imgs</span><span style='color:#0098D3'>5</span></div><div class='header-rule-row'><span>> 10 imgs</span><span style='color:#ef4444'>0</span></div></div>";
+$tipSpec = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: ATRIBUTOS (Peso 1)</div><div class='header-rule-row'><span>< 2 itens</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>2 a 3 itens</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>4 a 6 itens</span><span style='color:#10b981'>4</span></div><div class='header-rule-row'><span>7 a 19 itens</span><span style='color:#0098D3'>5</span></div></div>";
 
 echo "<div class='quality-list'>";
+// CABEÇALHO RESTAURADO COM TOOLTIPS E NOMES ORIGINAIS
 echo "<div class='quality-header'>
-        <div>Foto</div><div>Produto & Título</div><div>Marca</div>
-        <div style='text-align:center'>Freq.</div><div style='text-align:center'>Custo</div><div style='text-align:center'>Est.Tab</div><div style='text-align:center'>Liq</div>
-        <div>Análise de Descrição</div><div>Especificações</div>
-        <div style='text-align:center; cursor:help' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>TÍTULO<div class='tooltip-hidden-content' style='display:none'>$tipTit</div></div>
-        <div style='text-align:center; cursor:help' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>DESC<div class='tooltip-hidden-content' style='display:none'>$tipDesc</div></div>
-        <div style='text-align:center; cursor:help' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>IMG<div class='tooltip-hidden-content' style='display:none'>$tipImg</div></div>
-        <div style='text-align:center; cursor:help' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>ESPEC<div class='tooltip-hidden-content' style='display:none'>$tipSpec</div></div>
-        <div style='text-align:center'>Geral</div>
+        <div>Foto</div>
+        <div>Produto / Marca</div>
+        <div>Métricas</div>
+        <div>Descrição</div>
+        <div>Especificações</div>
+        <div style='cursor:help' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>TÍTULO<div class='tooltip-hidden-content' style='display:none'>$tipTit</div></div>
+        <div style='cursor:help' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>DESC<div class='tooltip-hidden-content' style='display:none'>$tipDesc</div></div>
+        <div style='cursor:help' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>IMG<div class='tooltip-hidden-content' style='display:none'>$tipImg</div></div>
+        <div style='cursor:help' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>ESPEC<div class='tooltip-hidden-content' style='display:none'>$tipSpec</div></div>
+        <div>Geral</div>
       </div>";
 
 $totalRows = 0;
@@ -677,7 +750,7 @@ if ($rsCount) {
     $totalRows = (int) ($r['total'] ?? 0);
 }
 
-// --- SQL INICIAL (4 COLUNAS D009 + D049 PONTE + FILTRO EMPRESA) ---
+// --- SQL ---
 $sql = "SELECT T1.*, 
                T2.D009_Frequencia_Venda, 
                T2.D009_Valor_Custo_Unitario,
@@ -688,7 +761,6 @@ $sql = "SELECT T1.*,
         LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id)
         GROUP BY T1.D001E_Id
         ORDER BY T1.D001E_Id ASC LIMIT $limit OFFSET 0";
-// ------------------------------------------------------------------
 
 $rs = mysql_query($sql);
 
@@ -726,9 +798,7 @@ echo "<div id='demo'></div></div>"; // Fim list
             <div class="vis-header-row"><span>Descrição do Produto</span><span class="vis-chip"
                     id="visDescScore">--</span></div>
             <div class="vis-desc-box" id="visDesc"></div>
-            <div class="vis-specs-container">
-                <div class="vis-header-row"><span>Especificações</span><span class="vis-chip"
-                        id="visAttrScore">--</span></div>
+            <div class="vis-specs-container"><div class="vis-header-row" style="margin-top:15px"><span>Especificações</span><span class="vis-chip" id="visAttrScore">--</span></div>
                 <div id="visSpecsContent"></div>
             </div>
         </div>
@@ -772,11 +842,11 @@ echo "<div id='demo'></div></div>"; // Fim list
             function btn(l, p, c) { return '<a href="javascript:void(0)" class="pg-btn ' + (c || '') + '" data-page="' + p + '">' + l + '</a>'; }
             function ren() {
                 var h = '', prev = (cur <= 1), next = (cur >= pages), r = 2, s = Math.max(1, cur - r), e = Math.min(pages, cur + r);
-                if (!(opt.autoHidePrevious && prev)) h += btn('&lt;', cur - 1, prev ? 'disabled' : '');
-                if (s > 1) { h += btn('1', 1, cur === 1 ? 'active' : ''); if (s > 2) h += '<span class="pg-dots">...</span>'; }
+                if (!(opt.autoHidePrevious && prev)) h += btn('<', cur - 1, prev ? 'disabled' : '');
+                if (s > 1) { h += btn('1', 1, cur === 1 ? 'active' : ''); if (s > 2) h += '<span style="color:#999;font-size:12px;padding:0 5px">...</span>'; }
                 for (var i = s; i <= e; i++) h += btn(String(i), i, cur === i ? 'active' : '');
-                if (e < pages) { if (e < pages - 1) h += '<span class="pg-dots">...</span>'; h += btn(String(pages), pages, cur === pages ? 'active' : ''); }
-                if (!(opt.autoHideNext && next)) h += btn('&gt;', cur + 1, next ? 'disabled' : '');
+                if (e < pages) { if (e < pages - 1) h += '<span style="color:#999;font-size:12px;padding:0 5px">...</span>'; h += btn(String(pages), pages, cur === pages ? 'active' : ''); }
+                if (!(opt.autoHideNext && next)) h += btn('>', cur + 1, next ? 'disabled' : '');
                 $w.html(h);
             }
             function go(p) {
@@ -817,12 +887,12 @@ echo "<div id='demo'></div></div>"; // Fim list
 
     function getMetaNota(n) {
         n = Number(n);
-        if (n === 6) return { c: 'var(--score-6)', t: 'Ótima' };
-        if (n === 5) return { c: 'var(--score-5)', t: 'Muito Boa' };
-        if (n === 4) return { c: 'var(--score-4)', t: 'Boa' };
-        if (n === 3) return { c: 'var(--score-3)', t: 'Média' };
-        if (n === 2) return { c: 'var(--score-2)', t: 'Ruim' };
-        return { c: 'var(--score-1)', t: 'Muito Ruim' };
+        if (n === 6) return { c: '#0098D3', t: 'Ótima' }; // GUIMEPA
+        if (n === 5) return { c: '#10b981', t: 'Muito Boa' };
+        if (n === 4) return { c: '#84cc16', t: 'Boa' };
+        if (n === 3) return { c: '#eab308', t: 'Média' };
+        if (n === 2) return { c: '#fca5a5', t: 'Ruim' };
+        return { c: '#ef4444', t: 'Muito Ruim' };
     }
 
     function abrirVisualizador(sku) {
