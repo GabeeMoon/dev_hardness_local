@@ -1,13 +1,6 @@
 <?php
-/**
- * [SUMARIO] PAINEL DE MELHORIAS (V1 - BASEADO NA V32)
- * ----------------------------------------------------------------------------
- * [TABELA] .... D001F (Sem pontuação)
- * [CONFIG] .... Configurações
- * [STYLE] ..... CSS (Barra Horizontal, Cores Guimepa, Header Fixo)
- * [JS_TOOL] ... Tooltip, Modal, Paginação e Exportação CSV
- * [RENDER] .... Loop Principal e Exportação Bruta
- * ----------------------------------------------------------------------------
+/*
+ PAINEL DE CORRECAO DE ANUNCIO
  */
 namespace hardness;
 
