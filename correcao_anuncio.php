@@ -1,6 +1,6 @@
 <?php
 /*
- PAINEL DE CORRECAO DE ANUNCIO
+ PAINEL DE CORRECAO DE ANUNCIO (D001F) - 100% ISOLADO (SEM CONFLITO DE AJAX)
  */
 namespace hardness;
 
@@ -19,13 +19,11 @@ $limit         = $qtdePorPagina;
 $C004_Id = isset($g['empresaAtual']) ? (int) $g['empresaAtual'] : 1;
 
 $page = isset($_POST['page']) ? (int) $_POST['page'] : 1;
-if ($page < 1)
-    $page = 1;
+if ($page < 1) $page = 1;
 
 if (isset($_POST['pageSize'])) {
     $tmp = (int) $_POST['pageSize'];
-    if ($tmp > 0)
-        $limit = $tmp;
+    if ($tmp > 0) $limit = $tmp;
 }
 
 $offset = ($page - 1) * $limit;
@@ -33,45 +31,28 @@ $offset = ($page - 1) * $limit;
 $isAjax  = (isset($_POST['ajax']) && (int) $_POST['ajax'] === 1);
 $apiMode = 0;
 
-// INDICADOR VISUAL
+// INDICADOR VISUAL (Laranja)
 if (!$isAjax) {
     echo "<div style='
-            position: fixed; bottom: 15px; right: 15px;
-            background: #fff; color: #333;
-            padding: 8px 14px; border-radius: 8px;
-            font-size: 12px; font-family: sans-serif; font-weight: 600;
-            z-index: 999998; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            border: 1px solid #ddd; pointer-events: none;
+            position: fixed; bottom: 20px; right: 20px;
+            background: #ffffff; color: #1f2937;
+            padding: 10px 16px; border-radius: 50px;
+            font-size: 12px; font-family: -apple-system, sans-serif; font-weight: 600;
+            z-index: 999998; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border: 1px solid #f3f4f6; pointer-events: none; display:flex; align-items:center; gap:8px;
           '>
-            🏢 Melhorias Anúncio: <span style='color: #0098D3; font-size:13px;'>ID {$C004_Id}</span>
+            <span style='background:#f59e0b; width:8px; height:8px; border-radius:50%; display:inline-block;'></span>
+            <span>Painel Correção: <strong style='color: #111827;'>ID {$C004_Id}</strong></span>
           </div>";
 }
 
 // =============================================================================
-// [FUNC] FUNÇÕES AUXILIARES
+// [RENDER] FUNÇÃO DE LINHA EXCLUSIVA (D001F)
 // =============================================================================
-function extrairMarcaJsonAnyMarket($jsonString)
-{
-    if (empty($jsonString))
-        return "";
-    $obj = json_decode($jsonString);
-    if (isset($obj->content[0]->brand->name))
-        return trim($obj->content[0]->brand->name);
-    return "";
-}
-
-// =============================================================================
-// [RENDER] FUNÇÃO DE LINHA
-// =============================================================================
-function renderImprovementRow($row)
-{
-    // Tratamento de Marca (caso precise extrair de algum JSON legado ou use a coluna direta)
+function renderCorrectionRowIsolado($row) {
     $marca = isset($row['D001F_Marca']) ? $row['D001F_Marca'] : 'ND';
-
-    // Imagem
     $imgCapa = $row['D001F_Imagem_1'] ?: "https://via.placeholder.com/100x100?text=Sem+Img";
 
-    // Dados Básicos
     $titulo    = htmlspecialchars($row['D001F_Titulo'], ENT_QUOTES);
     $skuRaw    = $row['D001F_D001_Codigo_Produto'];
     $sku       = htmlspecialchars($skuRaw, ENT_QUOTES);
@@ -80,112 +61,93 @@ function renderImprovementRow($row)
 
     // Specs
     $specHtml = "";
-    if (!empty($row['D001F_EAN']))
-        $specHtml .= "<b>EAN:</b> {$row['D001F_EAN']}<br>";
-    if (!empty($row['D001F_garantia']))
-        $specHtml .= "<b>Gar:</b> {$row['D001F_garantia']}<br>";
-    if (!empty($row['D001F_peso']))
-        $specHtml .= "<b>Peso:</b> {$row['D001F_peso']}<br>";
-    if (!empty($row['D001F_altura']))
-        $specHtml .= "<b>Dim:</b> " . ($row['D001F_altura'] ?: 0) . "x" . ($row['D001F_largura'] ?: 0) . "x" . ($row['D001F_comprimento'] ?: 0);
-    if (empty($specHtml))
-        $specHtml = "<span style='color:#bbb'>Vazio</span>";
+    if (!empty($row['D001F_EAN'])) $specHtml .= "<span><b>EAN:</b> {$row['D001F_EAN']}</span>";
+    if (!empty($row['D001F_garantia'])) $specHtml .= "<span><b>Gar:</b> {$row['D001F_garantia']}</span>";
+    if (!empty($row['D001F_peso'])) $specHtml .= "<span><b>Peso:</b> {$row['D001F_peso']}</span>";
+    if (!empty($row['D001F_altura'])) $specHtml .= "<span><b>Dim:</b> " . ($row['D001F_altura'] ?: 0) . "x" . ($row['D001F_largura'] ?: 0) . "x" . ($row['D001F_comprimento'] ?: 0) . "</span>";
+    if (empty($specHtml)) $specHtml = "<span style='color:#bbb'>Vazio</span>";
 
-    // --- DADOS D009 (Métricas) ---
-    $freqVenda = !empty($row['D009_Frequencia_Venda']) ? $row['D009_Frequencia_Venda'] : '<b>0</b>';
+    // Métricas (D009)
+    $freqVenda = !empty($row['D009_Frequencia_Venda']) ? $row['D009_Frequencia_Venda'] : '0';
     $custoVal  = isset($row['D009_Valor_Custo_Unitario']) ? (float) $row['D009_Valor_Custo_Unitario'] : 0;
     $estTab    = isset($row['D009_Quantidade_Estoque_Tabela']) ? (int) $row['D009_Quantidade_Estoque_Tabela'] : 0;
     $estLiq    = isset($row['D009_Quantidade_Estoque_Liquido']) ? (int) $row['D009_Quantidade_Estoque_Liquido'] : 0;
 
-    $custoHtml  = ($custoVal > 0) ? "<span style='color:#0098D3; font-weight:700;'>R$ " . number_format($custoVal, 2, ',', '.') . "</span>" : "<b>0</b>";
-    $estTabHtml = ($estTab > 0) ? $estTab : "<b>0</b>";
-    $estLiqHtml = ($estLiq > 0) ? $estLiq : "<b>0</b>";
+    $custoHtml  = ($custoVal > 0) ? "R$ " . number_format($custoVal, 2, ',', '.') : "0";
+    $estTabHtml = ($estTab > 0) ? $estTab : "0";
+    $estLiqHtml = ($estLiq > 0) ? $estLiq : "0";
 
+    // Layout SEM PONTOS (Bolinhas verdes/amarelas removidas)
     return "
     <div class='quality-row'>
-        <div class='thumb-box' onclick='abrirVisualizador(\"$sku\")'><img src='$imgCapa'></div>
+        <div class='thumb-box' onclick='abrirVisualizadorCor(\"$sku\")'>
+            <img src='$imgCapa' alt='Capa'>
+        </div>
         
         <div class='col-info'>
             <div class='prod-title'>{$row['D001F_Titulo']}</div>
             <div class='prod-sub'>
-                <span class='prod-sku'>SKU: {$row['D001F_D001_Codigo_Produto']}</span>
-                <span class='prod-brand' title='$marcaHtml'>$marcaHtml</span>
+                <span class='badge-sku'>$sku</span>
+                <span class='badge-brand' title='$marcaHtml'>$marcaHtml</span>
             </div>
         </div>
         
         <div class='col-metrics'>
-            <div class='metric-cell'><span class='lbl'>Freq</span> <span class='val'>$freqVenda</span></div>
-            <div class='metric-cell'><span class='lbl'>Custo</span> <span class='val'>$custoHtml</span></div>
-            <div class='metric-cell'><span class='lbl'>Tab</span> <span class='val'>$estTabHtml</span></div>
-            <div class='metric-cell'><span class='lbl'>Liq</span> <span class='val'>$estLiqHtml</span></div>
+            <div class='metric-item' title='Frequência de Venda'><span class='m-lbl'>FREQ</span> <span class='m-val'>$freqVenda</span></div>
+            <div class='metric-item' title='Custo Unitário'><span class='m-lbl'>CUSTO</span> <span class='m-val text-blue'>$custoHtml</span></div>
+            <div class='metric-item' title='Estoque Tabela'><span class='m-lbl'>TAB</span> <span class='m-val'>$estTabHtml</span></div>
+            <div class='metric-item' title='Estoque Líquido'><span class='m-lbl'>LIQ</span> <span class='m-val'>$estLiqHtml</span></div>
         </div>
 
-        <div class='col-box-scroll'>" . ($descRaw ?: '<em>Sem descrição</em>') . "</div>
-        <div class='col-box-scroll'>$specHtml</div>
+        <div class='col-box-scroll content-desc'>" . ($descRaw ?: '<em>Sem descrição</em>') . "</div>
         
-        <div style='display:flex; align-items:center; justify-content:center;'>
-             <button class='pg-btn' onclick='abrirVisualizador(\"$sku\")' title='Visualizar'><i class='material-icons' style='font-size:16px'>visibility</i></button>
+        <div class='col-box-scroll content-spec'>$specHtml</div>
+        
+        <div class='col-actions'>
+             <button class='btn-action-icon' onclick='abrirVisualizadorCor(\"$sku\")' title='Visualizar Detalhes'>
+                <i class='material-icons'>visibility</i>
+             </button>
         </div>
     </div>";
 }
 
 // =============================================================================
-// [AJAX] GERENCIADOR
+// [AJAX] GERENCIADOR ISOLADO
 // =============================================================================
 if ($isAjax) {
 
-    function cleanInput($data)
-    {
-        $data = trim($data);
-        return mysql_real_escape_string($data);
+    // Função local para limpar input
+    if (!function_exists('cleanInputCor')) {
+        function cleanInputCor($data) {
+            $data = trim($data);
+            return mysql_real_escape_string($data);
+        }
     }
 
-    // [EXPORTAÇÃO CSV BLINDADA]
-    if (isset($_POST['action']) && $_POST['action'] === 'export_csv') {
+    // Função de filtro exclusiva para CORREÇÃO
+    if (!function_exists('buildWhereCor')) {
+        function buildWhereCor($postData) {
+            $where = ["1=1"];
+            
+            // Note que recebemos 'f_tit' do JS, mas validamos aqui
+            if (!empty($postData['f_tit'])) { $ft = cleanInputCor($postData['f_tit']); $where[] = "T1.D001F_Titulo LIKE '%$ft%'"; }
+            if (!empty($postData['f_sku'])) { $fs = cleanInputCor($postData['f_sku']); $where[] = "T1.D001F_D001_Codigo_Produto LIKE '%$fs%'"; }
+            if (!empty($postData['f_mar'])) { $fm = cleanInputCor($postData['f_mar']); $where[] = "T1.D001F_Marca LIKE '%$fm%'"; }
+            if (!empty($postData['f_desc'])) { $fd = cleanInputCor($postData['f_desc']); $where[] = "T1.D001F_Descricao LIKE '%$fd%'"; }
+            if (!empty($postData['f_spec'])) { $fsp = cleanInputCor($postData['f_spec']); $where[] = "(T1.D001F_EAN LIKE '%$fsp%' OR T1.D001F_garantia LIKE '%$fsp%' OR T1.D001F_peso LIKE '%$fsp%')"; }
 
-        // RECUPERA FILTROS
-        $where = ["1=1"];
-        if (!empty($_POST['f_tit'])) {
-            $ft      = cleanInput($_POST['f_tit']);
-            $where[] = "T1.D001F_Titulo LIKE '%$ft%'";
-        }
-        if (!empty($_POST['f_sku'])) {
-            $fs      = cleanInput($_POST['f_sku']);
-            $where[] = "T1.D001F_D001_Codigo_Produto LIKE '%$fs%'";
-        }
-        if (!empty($_POST['f_mar'])) {
-            $fm      = cleanInput($_POST['f_mar']);
-            $where[] = "T1.D001F_Marca LIKE '%$fm%'";
-        }
-        if (!empty($_POST['f_desc'])) {
-            $fd      = cleanInput($_POST['f_desc']);
-            $where[] = "T1.D001F_Descricao LIKE '%$fd%'";
-        }
-        // Busca generica em specs
-        if (!empty($_POST['f_spec'])) {
-            $fsp     = cleanInput($_POST['f_spec']);
-            $where[] = "(T1.D001F_EAN LIKE '%$fsp%' OR T1.D001F_garantia LIKE '%$fsp%' OR T1.D001F_peso LIKE '%$fsp%')";
-        }
+            if (isset($postData['f_est_liq']) && $postData['f_est_liq'] !== '') { $val = (int)$postData['f_est_liq']; $where[] = "T2.D009_Quantidade_Estoque_Liquido = $val"; }
+            if (isset($postData['f_est_tab']) && $postData['f_est_tab'] !== '') { $val = (int)$postData['f_est_tab']; $where[] = "T2.D009_Quantidade_Estoque_Tabela = $val"; }
+            if (!empty($postData['f_freq'])) { $val = cleanInputCor($postData['f_freq']); $where[] = "T2.D009_Frequencia_Venda LIKE '%$val%'"; }
+            if (!empty($postData['f_custo'])) { $val = (float)str_replace(',', '.', $postData['f_custo']); $where[] = "T2.D009_Valor_Custo_Unitario = $val"; }
 
-        // Numéricos Exatos
-        if (isset($_POST['f_est_liq']) && $_POST['f_est_liq'] !== '') {
-            $val     = (int) $_POST['f_est_liq'];
-            $where[] = "T2.D009_Quantidade_Estoque_Liquido = $val";
+            return implode(" AND ", $where);
         }
-        if (isset($_POST['f_est_tab']) && $_POST['f_est_tab'] !== '') {
-            $val     = (int) $_POST['f_est_tab'];
-            $where[] = "T2.D009_Quantidade_Estoque_Tabela = $val";
-        }
-        if (!empty($_POST['f_freq'])) {
-            $val     = cleanInput($_POST['f_freq']);
-            $where[] = "T2.D009_Frequencia_Venda LIKE '%$val%'";
-        }
-        if (!empty($_POST['f_custo'])) {
-            $val     = (float) str_replace(',', '.', $_POST['f_custo']);
-            $where[] = "T2.D009_Valor_Custo_Unitario = $val";
-        }
+    }
 
-        $whereStr = implode(" AND ", $where);
+    // [EXPORTAÇÃO CSV - Ação Renomeada: export_csv_cor]
+    if (isset($_POST['action']) && $_POST['action'] === 'export_csv_cor') {
+        $whereStr = buildWhereCor($_POST);
 
         $sqlCsv = "SELECT T1.* FROM D001F AS T1
                    LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001F_D001_Id
@@ -197,75 +159,36 @@ if ($isAjax) {
         $rsCsv = mysql_query($sqlCsv);
 
         header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename=melhorias_produtos_' . date('YmdHis') . '.csv');
+        header('Content-Disposition: attachment; filename=correcao_produtos_' . date('YmdHis') . '.csv');
 
         $out = fopen('php://output', 'w');
-        fputs($out, "\xEF\xBB\xBF"); // BOM para Excel
+        fputs($out, "\xEF\xBB\xBF");
 
-        // CABEÇALHO DO CSV (EXATO DO BANCO D001F)
         $header = [
-            'D001F_Id',
-            'D001F_D001_Id',
-            'D001F_D001_Codigo_Produto',
-            'D001F_Titulo',
-            'D001F_Marca',
-            'D001F_Descricao',
-            'D001F_Imagem_1',
-            'D001F_Imagem_2',
-            'D001F_Imagem_3',
-            'D001F_Imagem_4',
-            'D001F_Imagem_5',
-            'D001F_Imagem_6',
-            'D001F_Imagem_7',
-            'D001F_Imagem_8',
-            'D001F_Imagem_9',
-            'D001F_Imagem_10',
-            'D001F_EAN',
-            'D001F_garantia',
-            'D001F_peso',
-            'D001F_altura',
-            'D001F_largura',
-            'D001F_comprimento',
-            'D001F_ult_att'
+            'D001F_Id', 'D001F_D001_Id', 'D001F_D001_Codigo_Produto', 'D001F_Titulo', 'D001F_Marca',
+            'D001F_Descricao', 'D001F_Imagem_1', 'D001F_Imagem_2', 'D001F_Imagem_3', 'D001F_Imagem_4',
+            'D001F_Imagem_5', 'D001F_Imagem_6', 'D001F_Imagem_7', 'D001F_Imagem_8', 'D001F_Imagem_9',
+            'D001F_Imagem_10', 'D001F_EAN', 'D001F_garantia', 'D001F_peso', 'D001F_altura',
+            'D001F_largura', 'D001F_comprimento', 'D001F_ult_att'
         ];
         fputcsv($out, $header, ';');
 
-        // SÓ REMOVE QUEBRA DE LINHA PARA NÃO QUEBRAR O EXCEL
-        function simpleClean($str)
-        {
-            if (is_null($str))
-                return '';
+        function simpleCleanCor($str) {
+            if (is_null($str)) return '';
             $str = str_replace(["\r\n", "\r", "\n", "\t"], ' ', $str);
             return trim($str);
         }
 
         if ($rsCsv) {
             while ($row = mysql_fetch_assoc($rsCsv)) {
-                // Monta array na ordem exata do header
                 $line = [
-                    $row['D001F_Id'],
-                    $row['D001F_D001_Id'],
-                    simpleClean($row['D001F_D001_Codigo_Produto']),
-                    simpleClean($row['D001F_Titulo']),
-                    simpleClean($row['D001F_Marca']),
-                    simpleClean($row['D001F_Descricao']),
-                    $row['D001F_Imagem_1'],
-                    $row['D001F_Imagem_2'],
-                    $row['D001F_Imagem_3'],
-                    $row['D001F_Imagem_4'],
-                    $row['D001F_Imagem_5'],
-                    $row['D001F_Imagem_6'],
-                    $row['D001F_Imagem_7'],
-                    $row['D001F_Imagem_8'],
-                    $row['D001F_Imagem_9'],
-                    $row['D001F_Imagem_10'],
-                    simpleClean($row['D001F_EAN']),
-                    simpleClean($row['D001F_garantia']),
-                    simpleClean($row['D001F_peso']),
-                    simpleClean($row['D001F_altura']),
-                    simpleClean($row['D001F_largura']),
-                    simpleClean($row['D001F_comprimento']),
-                    $row['D001F_ult_att']
+                    $row['D001F_Id'], $row['D001F_D001_Id'], simpleCleanCor($row['D001F_D001_Codigo_Produto']),
+                    simpleCleanCor($row['D001F_Titulo']), simpleCleanCor($row['D001F_Marca']), simpleCleanCor($row['D001F_Descricao']),
+                    $row['D001F_Imagem_1'], $row['D001F_Imagem_2'], $row['D001F_Imagem_3'], $row['D001F_Imagem_4'],
+                    $row['D001F_Imagem_5'], $row['D001F_Imagem_6'], $row['D001F_Imagem_7'], $row['D001F_Imagem_8'],
+                    $row['D001F_Imagem_9'], $row['D001F_Imagem_10'], simpleCleanCor($row['D001F_EAN']),
+                    simpleCleanCor($row['D001F_garantia']), simpleCleanCor($row['D001F_peso']), simpleCleanCor($row['D001F_altura']),
+                    simpleCleanCor($row['D001F_largura']), simpleCleanCor($row['D001F_comprimento']), $row['D001F_ult_att']
                 ];
                 fputcsv($out, $line, ';');
             }
@@ -274,33 +197,20 @@ if ($isAjax) {
         exit;
     }
 
-    // CONTINUAÇÃO PARA REQUISIÇÕES JSON (SEARCH/MODAL)
     header('Content-Type: application/json; charset=UTF-8');
 
-    if (isset($_POST['action']) && $_POST['action'] === 'get_details') {
+    // GET DETAILS (D001F) - Ação Renomeada
+    if (isset($_POST['action']) && $_POST['action'] === 'get_details_cor') {
         $skuBusca = isset($_POST['sku']) ? mysql_real_escape_string($_POST['sku']) : '';
-        // NOTA: D001F aqui
-        $sqlDet = "SELECT T1.*, 
-                          T2.D009_Frequencia_Venda, 
-                          T2.D009_Valor_Custo_Unitario, 
-                          T2.D009_Quantidade_Estoque_Tabela, 
-                          T2.D009_Quantidade_Estoque_Liquido
-                    FROM D001F AS T1
-                    LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001F_D001_Id
-                    LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id)
-                    WHERE T1.D001F_D001_Codigo_Produto = '$skuBusca' LIMIT 1";
+        $sqlDet = "SELECT T1.* FROM D001F AS T1 WHERE T1.D001F_D001_Codigo_Produto = '$skuBusca' LIMIT 1";
         $rsDet  = mysql_query($sqlDet);
         if ($rsDet && mysql_num_rows($rsDet) > 0) {
             $row   = mysql_fetch_assoc($rsDet);
             $marca = isset($row['D001F_Marca']) ? $row['D001F_Marca'] : 'ND';
-
             $imgs = [];
-            for ($i = 1; $i <= 10; $i++)
-                if (!empty($row["D001F_Imagem_$i"]))
-                    $imgs[] = $row["D001F_Imagem_$i"];
-            if (empty($imgs))
-                $imgs[] = "https://via.placeholder.com/600x600?text=Sem+Imagem";
-
+            for ($i = 1; $i <= 10; $i++) if (!empty($row["D001F_Imagem_$i"])) $imgs[] = $row["D001F_Imagem_$i"];
+            if (empty($imgs)) $imgs[] = "https://via.placeholder.com/600x600?text=Sem+Imagem";
+            
             $specs = [
                 'EAN'         => $row['D001F_EAN'] ?? '',
                 'Garantia'    => $row['D001F_garantia'] ?? '',
@@ -318,59 +228,17 @@ if ($isAjax) {
                 'imgs'   => $imgs,
                 'specs'  => $specs
             ]);
-        }
-        else {
+        } else {
             echo json_encode(['ok' => 0, 'msg' => 'Produto não encontrado']);
         }
         exit;
     }
 
-    // SEARCH & FILTER
-    $where = ["1=1"];
-    // Filtros de Texto
-    if (!empty($_POST['f_tit'])) {
-        $ft      = cleanInput($_POST['f_tit']);
-        $where[] = "T1.D001F_Titulo LIKE '%$ft%'";
-    }
-    if (!empty($_POST['f_sku'])) {
-        $fs      = cleanInput($_POST['f_sku']);
-        $where[] = "T1.D001F_D001_Codigo_Produto LIKE '%$fs%'";
-    }
-    if (!empty($_POST['f_mar'])) {
-        $fm      = cleanInput($_POST['f_mar']);
-        $where[] = "T1.D001F_Marca LIKE '%$fm%'";
-    }
-    if (!empty($_POST['f_desc'])) {
-        $fd      = cleanInput($_POST['f_desc']);
-        $where[] = "T1.D001F_Descricao LIKE '%$fd%'";
-    }
-    if (!empty($_POST['f_spec'])) {
-        $fsp     = cleanInput($_POST['f_spec']);
-        $where[] = "(T1.D001F_EAN LIKE '%$fsp%' OR T1.D001F_garantia LIKE '%$fsp%' OR T1.D001F_peso LIKE '%$fsp%')";
-    }
-
-    // Numéricos Exatos (Tabela D009 não muda, pois é metrics)
-    if (isset($_POST['f_est_liq']) && $_POST['f_est_liq'] !== '') {
-        $val     = (int) $_POST['f_est_liq'];
-        $where[] = "T2.D009_Quantidade_Estoque_Liquido = $val";
-    }
-    if (isset($_POST['f_est_tab']) && $_POST['f_est_tab'] !== '') {
-        $val     = (int) $_POST['f_est_tab'];
-        $where[] = "T2.D009_Quantidade_Estoque_Tabela = $val";
-    }
-    if (!empty($_POST['f_freq'])) {
-        $val     = cleanInput($_POST['f_freq']);
-        $where[] = "T2.D009_Frequencia_Venda LIKE '%$val%'";
-    }
-    if (!empty($_POST['f_custo'])) {
-        $val     = (float) str_replace(',', '.', $_POST['f_custo']);
-        $where[] = "T2.D009_Valor_Custo_Unitario = $val";
-    }
-
-    $whereStr  = implode(" AND ", $where);
+    // LISTAGEM PRINCIPAL
+    $whereStr = buildWhereCor($_POST);
+    
+    // COUNT
     $totalRows = 0;
-
-    // SQL COUNT
     $sqlCount = "SELECT COUNT(*) AS total FROM D001F AS T1 
                  LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001F_D001_Id 
                  LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id) 
@@ -381,19 +249,19 @@ if ($isAjax) {
         $totalRows = (int) ($r['total'] ?? 0);
     }
 
-    // SQL LIST
+    // DATA
     $sql  = "SELECT T1.*, T2.D009_Frequencia_Venda, T2.D009_Valor_Custo_Unitario, T2.D009_Quantidade_Estoque_Tabela, T2.D009_Quantidade_Estoque_Liquido
-            FROM D001F AS T1 
-            LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001F_D001_Id 
-            LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id)
-            WHERE $whereStr 
-            GROUP BY T1.D001F_Id 
-            ORDER BY T1.D001F_Id ASC LIMIT $limit OFFSET $offset";
+             FROM D001F AS T1 
+             LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001F_D001_Id 
+             LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id)
+             WHERE $whereStr 
+             GROUP BY T1.D001F_Id 
+             ORDER BY T1.D001F_Id ASC LIMIT $limit OFFSET $offset";
     $rs   = mysql_query($sql);
     $html = "";
     if ($rs) {
         while ($row = mysql_fetch_assoc($rs)) {
-            $html .= renderImprovementRow($row);
+            $html .= renderCorrectionRowIsolado($row);
         }
     }
 
@@ -402,221 +270,363 @@ if ($isAjax) {
 }
 
 // =============================================================================
-// [STYLE] CSS
+// [STYLE] CSS (LAYOUT 6 COLUNAS)
 // =============================================================================
 $style = <<<STYLE
 <style>
-    :root { --bg-body: #f3f4f6; --card-bg: #ffffff; --text-color: #1f2937; --border-color: #e5e7eb; --primary: #0098D3; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background-color: var(--bg-body); margin: 0; padding: 20px; color: var(--text-color); }
-    .quality-list { max-width: 1600px; margin: 0 auto; margin-top: 20px; }
+    :root { 
+        --primary: #0098D3; 
+        --primary-hover: #007bb5;
+        --bg-body: #F3F4F6;
+        --bg-card: #FFFFFF; 
+        --text-main: #1F2937; 
+        --text-sub: #6B7280; 
+        --border: #E5E7EB; 
+        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: var(--bg-body); margin: 0; padding: 20px; color: var(--text-main); -webkit-font-smoothing: antialiased; }
     
-    /* FILTRO CONTAINER */
-    .filter-container { background: #fff; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 16px; margin-bottom: 20px; max-width: 1600px; margin: 0 auto 20px auto; border: 1px solid #e5e7eb; }
-    .filter-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
-    .filter-title { font-size: 14px; font-weight: 700; color: #374151; display:flex; align-items:center; gap:8px; text-transform:uppercase; letter-spacing:0.05em; }
-    .filter-icon { color: var(--primary); font-size: 20px; }
-    .filter-chevron { transition: transform 0.2s; color: #9ca3af; }
-    .filter-body { display: block; margin-top: 15px; border-top: 1px solid #f3f4f6; padding-top: 15px; }
+    .quality-list { max-width: 1600px; margin: 0 auto; position: relative; }
+    
+    /* FILTERS PANEL */
+    .filter-container { 
+        background: var(--bg-card); border-radius: 12px; 
+        box-shadow: var(--shadow-md); 
+        margin-bottom: 24px; max-width: 1600px; margin: 0 auto 24px auto; border: 1px solid var(--border); overflow: hidden;
+    }
+    .filter-header { 
+        padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; 
+        cursor: pointer; background: #fff; border-bottom: 1px solid transparent; transition: background 0.2s;
+    }
+    .filter-header:hover { background: #f9fafb; }
+    .filter-title { font-size: 15px; font-weight: 700; color: #374151; display:flex; align-items:center; gap:10px; }
+    .filter-icon { color: var(--primary); }
+    .filter-body { padding: 20px; background: #fff; border-top: 1px solid var(--border); display: block; animation: fadeIn 0.3s ease; }
     .filter-body.closed { display: none; }
-    .filter-header.closed .filter-chevron { transform: rotate(-90deg); }
     
-    /* GRID FILTROS */
-    .f-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
-    .f-group { display: flex; flex-direction: column; gap: 4px; }
-    .f-label { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; }
-    .f-input { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; outline: none; transition: all 0.2s; width: 100%; }
-    .f-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(0, 152, 211, 0.15); }
-    .f-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f3f4f6; gap: 10px; }
-    .f-btn-apply { background: var(--primary); color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
-    .f-btn-apply:hover { background: #007bb5; }
-    .f-btn-export { background: #10b981; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
-    .f-btn-export:hover { background: #059669; }
+    .f-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+    .f-group { display: flex; flex-direction: column; gap: 6px; }
+    .f-label { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
+    .f-input { 
+        padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; 
+        font-size: 13px; outline: none; transition: all 0.2s; width: 100%; color: #374151; background: #f9fafb;
+    }
+    .f-input:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(0, 152, 211, 0.1); }
     
-    /* TABELA */
-    /* Layout Novo: Foto | Prod | Metrics | Desc | Specs | Action */
-    .quality-header, .quality-row { display: grid; grid-template-columns: 70px 1.5fr 1fr 1.5fr 1fr 60px; gap: 12px; align-items: center; }
+    .f-actions { display: flex; justify-content: flex-end; margin-top: 20px; padding-top: 15px; border-top: 1px solid #f3f4f6; gap: 12px; flex-wrap: wrap; }
+    .f-btn-apply, .f-btn-export {
+        border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:8px; transition: all 0.2s; shadow: var(--shadow-sm);
+    }
+    .f-btn-apply { background: var(--primary); color: #fff; } .f-btn-apply:hover { background: var(--primary-hover); transform: translateY(-1px); }
+    .f-btn-export { background: #fff; color: #374151; border: 1px solid #d1d5db; } .f-btn-export:hover { background: #f3f4f6; border-color: #9ca3af; }
     
+    /* GRID LAYOUT - 6 COLS */
+    .quality-header, .quality-row { 
+        display: grid; 
+        grid-template-columns: 70px 1.5fr 1fr 1.2fr 1fr 60px; 
+        gap: 12px; 
+        align-items: center;
+    }
+
+    /* HEADER FIXO */
     .quality-header { 
-        position: sticky; top: 0; z-index: 50; 
-        background: #f9fafb; border-bottom: 2px solid #e5e7eb;
+        position: sticky; top: 0; z-index: 100;
         padding: 12px 16px; 
-        font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.03em; 
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; 
+        background: #F3F4F6;
+        border-bottom: 2px solid #e5e7eb;
+        margin-bottom: 5px; 
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
     }
-    .quality-header > div { display: flex; align-items: center; justify-content: center; text-align: center; }
-    .quality-header > div:nth-child(2), .quality-header > div:nth-child(4), .quality-header > div:nth-child(5) { justify-content: flex-start; text-align: left; }
+    .quality-header > div { text-align: left; }
+    .quality-header > div.center { text-align: center; justify-content: center; display: flex; }
+
+    /* ROW CARD */
+    .quality-row { 
+        background: var(--bg-card); border-radius: 8px; 
+        padding: 12px 16px; margin-bottom: 12px; border: 1px solid var(--border); 
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: var(--shadow-sm);
+    }
+    .quality-row:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border-color: #cbd5e1; }
     
-    .quality-row { background: var(--card-bg); border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 14px 16px; margin-bottom: 10px; border: 1px solid transparent; transition: all 0.2s; }
-    .quality-row:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-color: #d1d5db; }
+    .thumb-box { 
+        width: 64px; height: 64px; border-radius: 8px; border: 1px solid #e5e7eb; padding: 2px; background: #fff; 
+        cursor: pointer; display: flex; align-items: center; justify-content: center; overflow: hidden;
+    }
+    .thumb-box img { width: 100%; height: 100%; object-fit: contain; transition: transform 0.3s; }
+    .thumb-box:hover img { transform: scale(1.1); }
     
-    .thumb-box { width: 64px; height: 64px; border-radius: 8px; border: 1px solid #e5e7eb; padding: 3px; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-    .thumb-box img { width: 100%; height: 100%; object-fit: contain; }
-    .col-info { display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
-    .prod-title { font-size: 13px; font-weight: 600; color: #111827; line-height: 1.3; }
-    .prod-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .prod-sku { font-size: 10px; color: #4b5563; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: monospace; border: 1px solid #e5e7eb; }
-    .prod-brand { font-size: 10px; font-weight: 700; color: var(--primary); white-space: nowrap; }
-    .col-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; background: #f9fafb; padding: 6px 10px; border-radius: 8px; border: 1px solid #f3f4f6; }
-    .metric-cell { display: flex; justify-content: space-between; align-items: center; font-size: 11px; }
-    .metric-cell .lbl { color: #9ca3af; font-size: 10px; font-weight: 600; text-transform: uppercase; margin-right: 4px; }
-    .metric-cell .val { color: #374151; }
-    .col-box-scroll { font-size: 11px; color: #4b5563; max-height: 64px; overflow-y: auto; background: #fff; padding: 4px; line-height: 1.4; border-radius: 4px; border: 1px solid #f3f4f6; }
-    .col-box-scroll::-webkit-scrollbar { width: 3px; }
-    .col-box-scroll::-webkit-scrollbar-thumb { background: #d1d5db; }
+    .col-info { display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
+    .prod-title { font-size: 13px; font-weight: 600; color: #111827; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .prod-sub { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .badge-sku { font-size: 10px; color: #4b5563; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: 'Monaco', monospace; border: 1px solid #e5e7eb; }
+    .badge-brand { font-size: 10px; font-weight: 700; color: #fff; background: var(--primary); padding: 2px 6px; border-radius: 4px; max-width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .col-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; background: #f9fafb; padding: 6px 10px; border-radius: 6px; border: 1px solid #f3f4f6; }
+    .metric-item { display: flex; justify-content: space-between; align-items: center; font-size: 11px; }
+    .m-lbl { color: #9ca3af; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+    .m-val { color: #374151; font-weight: 600; }
+    .m-val.text-blue { color: var(--primary); }
+
+    .col-box-scroll { 
+        font-size: 11px; color: #4b5563; max-height: 70px; overflow-y: auto; background: #fff; 
+        padding: 4px 6px; line-height: 1.5; border-radius: 6px; border: 1px solid #f3f4f6; 
+    }
+    .content-spec span { display: block; border-bottom: 1px solid #f9fafb; padding: 2px 0; }
+    /* Scrollbar fina */
+    .col-box-scroll::-webkit-scrollbar { width: 4px; }
+    .col-box-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
+    .col-box-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+    .col-box-scroll::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+    .col-actions { display: flex; justify-content: center; }
+    .btn-action-icon { 
+        background: transparent; border: 1px solid #e5e7eb; color: #6b7280; 
+        width: 36px; height: 36px; border-radius: 6px; cursor: pointer; transition: all 0.2s;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .btn-action-icon:hover { background: #fffbeb; color: #d97706; border-color: #fcd34d; transform: scale(1.05); }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(4px); padding: 20px; }
+    .modal-content { background: #fff; width: 100%; max-width: 1100px; height: 85vh; border-radius: 16px; position: relative; display: flex; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); }
+    .close-modal { position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer; z-index: 100; color: #9ca3af; transition: color 0.2s; }
+    .close-modal:hover { color: #1f2937; }
     
-    .start-msg { text-align: center; padding: 80px 20px; color: #9ca3af; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    .start-msg i { font-size: 64px; color: #e5e7eb; margin-bottom: 15px; }
-    .start-msg h2 { font-size: 20px; margin-bottom: 8px; color: #374151; }
+    .vis-thumbs { width: 110px; background: #f9fafb; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid #e5e7eb; }
+    .vis-mini { width: 100%; height: 80px; object-fit: contain; border-radius: 6px; cursor: pointer; background: #fff; border: 1px solid #e5e7eb; transition: all 0.2s; }
+    .vis-mini.active, .vis-mini:hover { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(0, 152, 211, 0.2); }
     
-    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(3px); padding: 20px; }
-    .modal-content { background: #fff; width: 100%; max-width: 1100px; height: 90%; border-radius: 12px; position: relative; display: flex; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
-    .close-modal { position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; z-index: 100; color: #9ca3af; }
-    .close-modal:hover { color: #333; }
-    .vis-thumbs { width: 100px; background: #f9fafb; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; border-right: 1px solid #e5e7eb; }
-    .vis-mini { width: 100%; height: 70px; object-fit: contain; border: 2px solid transparent; border-radius: 6px; cursor: pointer; background: #fff; border: 1px solid #f1f1f1; }
-    .vis-mini.active { border-color: var(--primary); }
-    .vis-main { flex: 1; display: flex; justify-content: center; align-items: center; background: #fff; padding: 20px; position: relative; }
-    .vis-main img { max-width: 100%; max-height: 100%; object-fit: contain; }
-    .vis-score-badge { display:none; } /* Sem score */
-    .vis-info { width: 350px; border-left: 1px solid #e5e7eb; padding: 20px; overflow-y: auto; background: #fff; display: flex; flex-direction: column; gap: 15px; }
-    .vis-h1 { font-size: 18px; font-weight: 700; margin: 0; color: #111827; line-height: 1.3; }
-    .vis-chip { display:none; } /* Sem chip de nota */
-    .vis-meta { font-size: 12px; color: #6b7280; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; }
-    .vis-btn-print { width: 100%; padding: 10px; background: #1f2937; color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
-    .vis-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-weight: 700; font-size: 12px; color: #111827; }
-    .vis-desc-box { font-size: 12px; line-height: 1.5; color: #4b5563; background: #f9fafb; padding: 10px; border-radius: 6px; border: 1px solid #e5e7eb; max-height: 150px; overflow-y: auto; }
-    .vis-specs-table td { padding: 4px 0; border-bottom: 1px solid #f3f4f6; color: #4b5563; font-size: 12px; }
+    .vis-main { flex: 1; display: flex; justify-content: center; align-items: center; background: #fff; padding: 30px; position: relative; }
+    .vis-main img { max-width: 100%; max-height: 100%; object-fit: contain; filter: drop-shadow(0 10px 8px rgba(0,0,0,0.04)); }
     
-    #demo { padding: 20px 0; display:none; flex-wrap:wrap; align-items:center; justify-content:center; gap:5px; }
-    #demo.active { display: flex; }
-    #demo .pg-btn { border: 1px solid #d1d5db; background:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; color:#374151; }
-    #demo .pg-btn:hover { background: #f3f4f6; }
-    #demo .pg-btn.active { background: var(--primary); border-color: var(--primary); color:#fff; }
+    .vis-info { width: 360px; border-left: 1px solid #e5e7eb; padding: 30px; overflow-y: auto; background: #fff; display: flex; flex-direction: column; gap: 20px; }
+    .vis-h1 { font-size: 20px; font-weight: 800; margin: 0; color: #111827; line-height: 1.3; }
+    .vis-meta { font-size: 13px; color: #6b7280; padding-bottom: 15px; border-bottom: 1px solid #e5e7eb; }
+    .vis-meta strong { color: #374151; }
     
+    .vis-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 700; font-size: 12px; color: #374151; text-transform: uppercase; letter-spacing: 0.05em; }
+    .vis-desc-box { font-size: 13px; line-height: 1.6; color: #4b5563; background: #f9fafb; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb; max-height: 200px; overflow-y: auto; }
+    
+    .vis-specs-table { width: 100%; border-collapse: collapse; }
+    .vis-specs-table td { padding: 8px 0; border-bottom: 1px solid #f3f4f6; color: #4b5563; font-size: 13px; }
+    .vis-specs-table td strong { color: #1f2937; margin-right: 5px; }
+    
+    .vis-btn-print { width: 100%; padding: 12px; background: #1f2937; color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.2s; margin-top: auto; }
+    .vis-btn-print:hover { background: #111827; }
+
+    /* Pager */
+    #demoCor { padding: 30px 0; display:none; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px; }
+    #demoCor.active { display: flex; }
+    #demoCor .pg-btn { border: 1px solid #e5e7eb; background:#fff; padding:8px 14px; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; color:#374151; text-decoration: none; transition: all 0.2s; }
+    #demoCor .pg-btn:hover { background: #f9fafb; border-color: #d1d5db; }
+    #demoCor .pg-btn.active { background: var(--primary); border-color: var(--primary); color:#fff; }
+
+    /* Responsive */
+    @media (max-width: 1400px) {
+        .quality-header, .quality-row { 
+            grid-template-columns: 70px 1.2fr 1fr 1fr 1fr 60px; 
+            gap: 8px;
+        }
+    }
     @media (max-width: 1200px) { 
-        .f-grid { grid-template-columns: repeat(4, 1fr); }
-        .quality-header, .quality-row { grid-template-columns: 60px 1.4fr 160px 1.5fr 1fr 60px; gap: 8px; }
-        .col-metrics { grid-template-columns: 1fr; gap: 2px; }
-    }
-    @media (max-width: 900px) {
-        .f-grid { grid-template-columns: repeat(2, 1fr); }
         .quality-header { display: none; }
-        .quality-row { display: flex; flex-direction: column; align-items: stretch; gap: 10px; position: relative; padding-top: 15px; }
-        .thumb-box { align-self: flex-start; }
-        .col-info { margin-left: 70px; margin-top: -70px; min-height: 60px; justify-content: center; }
-        .col-metrics { display: flex; justify-content: space-between; flex-wrap: wrap; margin-top: 10px; }
+        .quality-row { 
+            grid-template-columns: 70px 1fr 1fr; 
+            grid-template-areas: 
+                "thumb info info"
+                "thumb metrics metrics"
+                "desc desc desc"
+                "spec spec spec"
+                "action action action";
+            gap: 10px; height: auto;
+        }
+        .thumb-box { grid-area: thumb; }
+        .col-info { grid-area: info; }
+        .col-metrics { grid-area: metrics; }
+        .content-desc { grid-area: desc; max-height: 60px; }
+        .content-spec { grid-area: spec; max-height: 60px; }
+        .col-actions { grid-area: action; justify-content: flex-end; padding-right: 10px; }
     }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 </style>
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 STYLE;
-if (!$apiMode)
-    echo $style;
+if (!$apiMode) echo $style;
 
+// NOTE OS IDs PREFIXADOS COM "cor_"
 echo "
 <div class='filter-container'>
-    <div class='filter-header' onclick='toggleFilterBody()'>
-        <div class='filter-title'><i class='material-icons filter-icon'>tune</i> Filtros Avançados (Melhorias)</div>
-        <i class='material-icons filter-chevron' id='filterChevron'>expand_more</i>
+    <div class='filter-header' onclick='toggleFilterBodyCor()'>
+        <div class='filter-title'><i class='material-icons filter-icon'>tune</i> Filtros Avançados (Correção)</div>
+        <i class='material-icons filter-chevron' id='filterChevronCor'>expand_more</i>
     </div>
-    <div class='filter-body' id='filterBody'>
+    <div class='filter-body' id='filterBodyCor'>
         <div class='f-grid'>
-            <div class='f-group'><label class='f-label'>Título</label><input type='text' id='f_tit' class='f-input' placeholder='Ex: Parafusadeira'></div>
-            <div class='f-group'><label class='f-label'>SKU / Cód</label><input type='text' id='f_sku' class='f-input' placeholder='Ex: 12345'></div>
-            <div class='f-group'><label class='f-label'>Marca</label><input type='text' id='f_mar' class='f-input' placeholder='Ex: Bosch'></div>
-            <div class='f-group'><label class='f-label'>Descrição</label><input type='text' id='f_desc' class='f-input' placeholder='Contém...'></div>
-            <div class='f-group'><label class='f-label'>Specs/EAN</label><input type='text' id='f_spec' class='f-input' placeholder='Contém...'></div>
-            <div class='f-group'><label class='f-label'>Est. Líquido (=)</label><input type='number' id='f_est_liq' class='f-input' placeholder='Exato'></div>
-            <div class='f-group'><label class='f-label'>Est. Tabela (=)</label><input type='number' id='f_est_tab' class='f-input' placeholder='Exato'></div>
-            <div class='f-group'><label class='f-label'>Frequência</label><input type='text' id='f_freq' class='f-input' placeholder='Ex: A'></div>
-            <div class='f-group'><label class='f-label'>Custo (=)</label><input type='text' id='f_custo' class='f-input' placeholder='Ex: 10,90'></div>
+            <div class='f-group'><label class='f-label'>Título</label><input type='text' id='cor_tit' class='f-input' placeholder='Ex: Parafusadeira'></div>
+            <div class='f-group'><label class='f-label'>SKU / Cód</label><input type='text' id='cor_sku' class='f-input' placeholder='Ex: 12345'></div>
+            <div class='f-group'><label class='f-label'>Marca</label><input type='text' id='cor_mar' class='f-input' placeholder='Ex: Bosch'></div>
+            <div class='f-group'><label class='f-label'>Descrição</label><input type='text' id='cor_desc' class='f-input' placeholder='Contém...'></div>
+            <div class='f-group'><label class='f-label'>Specs/EAN</label><input type='text' id='cor_spec' class='f-input' placeholder='Contém...'></div>
+            <div class='f-group'><label class='f-label'>Est. Líquido (=)</label><input type='number' id='cor_est_liq' class='f-input' placeholder='Exato'></div>
+            <div class='f-group'><label class='f-label'>Est. Tabela (=)</label><input type='number' id='cor_est_tab' class='f-input' placeholder='Exato'></div>
+            <div class='f-group'><label class='f-label'>Frequência</label><input type='text' id='cor_freq' class='f-input' placeholder='Ex: A'></div>
+            <div class='f-group'><label class='f-label'>Custo (=)</label><input type='text' id='cor_custo' class='f-input' placeholder='Ex: 10,90'></div>
         </div>
         <div class='f-actions'>
-            <button class='f-btn-apply' onclick='applyFilters()'><i class='material-icons'>search</i> Aplicar Filtros</button>
-            <button class='f-btn-export' onclick='exportCSV()'><i class='material-icons'>file_download</i> Exportar CSV</button>
+            <button class='f-btn-apply' onclick='applyFiltersCor()'><i class='material-icons'>search</i> Aplicar Filtros</button>
+            <button class='f-btn-export' onclick='exportCSVCor()'><i class='material-icons'>file_download</i> Exportar CSV</button>
         </div>
     </div>
 </div>";
 
 echo "<div class='quality-list'>";
+// NOTE HEADER FIXO com layout de 6 colunas
 echo "<div class='quality-header'>
-        <div>Foto</div><div>Produto / Marca</div><div>Métricas</div><div>Descrição</div><div>Especificações</div><div>Ver</div>
+        <div>Foto</div>
+        <div>Produto / Marca</div>
+        <div>Métricas</div>
+        <div>Descrição</div>
+        <div>Especificações</div>
+        <div class='center'>Ação</div>
       </div>";
 
-echo "<div id='content'><div class='start-msg'><i class='material-icons'>tune</i><h2>Comece sua análise</h2><p>Utilize os filtros acima para buscar os produtos.</p></div></div>";
+echo "<div id='contentCor'><div class='start-msg' style='text-align:center; padding:50px; color:#9ca3af;'><i class='material-icons' style='font-size:48px; margin-bottom:10px; display:block;'>search</i><h2 style='font-size:18px; margin:0;'>Comece sua análise</h2><p>Utilize os filtros acima para carregar os produtos.</p></div></div>";
 
 $ajaxUrl  = isset($_SERVER['REQUEST_URI']) ? htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES, 'UTF-8') : '';
-$sysDivId = isset($g['divId']) ? $g['divId'] : 'content';
-echo "<input type='hidden' id='hardness_total' value='0'>";
-echo "<input type='hidden' id='hardness_pageSize' value='" . (int) $limit . "'>";
-echo "<input type='hidden' id='hardness_ajaxUrl' value='" . $ajaxUrl . "'>";
-echo "<input type='hidden' id='sys_base_divId' value='" . $sysDivId . "'>";
-echo "<div id='demo'></div></div>";
+$sysDivId = isset($g['divId']) ? $g['divId'] : 'contentCor';
+// AQUI ESTAVA O ERRO - IDs UNICOS AGORA PARA NÃO PEGAR O DO OUTRO PAINEL
+echo "<input type='hidden' id='hardness_total_cor' value='0'>";
+echo "<input type='hidden' id='hardness_pageSize_cor' value='" . (int) $limit . "'>";
+echo "<input type='hidden' id='hardness_ajaxUrl_cor' value='" . $ajaxUrl . "'>";
+echo "<input type='hidden' id='sys_base_divId_cor' value='" . $sysDivId . "'>";
+echo "<div id='demoCor'></div></div>";
 ?>
 
-<div id="modalVis" class="modal-overlay" onclick="if(event.target==this) fecharVis()">
+<div id="modalVisCor" class="modal-overlay" onclick="if(event.target==this) fecharVisCor()">
     <div class="modal-content printable-area">
-        <span class="close-modal" onclick="fecharVis()">×</span>
-        <div class="vis-thumbs" id="visThumbs"></div>
-        <div class="vis-main"><img id="visHero" src=""></div>
+        <span class="close-modal" onclick="fecharVisCor()">×</span>
+        <div class="vis-thumbs" id="visThumbsCor"></div>
+        <div class="vis-main"><img id="visHeroCor" src=""></div>
         <div class="vis-info">
-            <h1 class="vis-h1"><span id="visTitle">--</span></h1>
-            <div class="vis-meta">SKU: <strong id="visSku">--</strong> | Marca: <strong id="visBrand">--</strong></div>
-            <button class="vis-btn-print" onclick="imprimirConteudoModal()"><i class="material-icons">print</i> Imprimir Ficha Técnica</button>
-            <div class="vis-header-row"><span>Descrição do Produto</span></div>
-            <div class="vis-desc-box" id="visDesc"></div>
-            <div class="vis-specs-container"><div class="vis-header-row" style="margin-top:15px"><span>Especificações</span></div><div id="visSpecsContent"></div></div>
+            <div>
+                <h1 class="vis-h1"><span id="visTitleCor">--</span></h1>
+                <div class="vis-meta">SKU: <strong id="visSkuCor">--</strong> | Marca: <strong id="visBrandCor">--</strong></div>
+            </div>
+            
+            <div>
+                <div class="vis-header-row"><span>Descrição</span></div>
+                <div class="vis-desc-box" id="visDescCor"></div>
+            </div>
+            
+            <div class="vis-specs-container">
+                <div class="vis-header-row" style="margin-top:10px"><span>Especificações</span></div>
+                <div id="visSpecsContentCor"></div>
+            </div>
+
+            <button class="vis-btn-print" onclick="imprimirConteudoModalCor()"><i class="material-icons">print</i> Imprimir Ficha Técnica</button>
         </div>
     </div>
 </div>
 
 <script>
-    function toggleFilterBody() {
-        var b = document.getElementById('filterBody');
-        var c = document.getElementById('filterChevron');
+    // NAMESPACE ISOLADO "Cor"
+    function toggleFilterBodyCor() {
+        var b = document.getElementById('filterBodyCor');
+        var c = document.getElementById('filterChevronCor');
         if (b.classList.contains('closed')) { b.classList.remove('closed'); c.style.transform = 'rotate(0deg)'; } else { b.classList.add('closed'); c.style.transform = 'rotate(-90deg)'; }
     }
-    var pager = {
+    
+    var pagerCor = {
         render: function(targetId, total, current, size, callbackName) {
             var $t = jQuery('#' + targetId); var pages = Math.ceil(total / size);
             if (pages <= 1) { $t.removeClass('active').html(''); return; }
             var h = '', r = 2, start = Math.max(1, current - r), end = Math.min(pages, current + r);
             function btn(lbl, pg, cls) { return '<a href="javascript:void(0)" class="pg-btn ' + (cls||'') + '" onclick="'+callbackName+'('+pg+')">' + lbl + '</a>'; }
-            if (current > 1) h += btn('<', current - 1);
+            if (current > 1) h += btn('Anterior', current - 1);
             if (start > 1) { h += btn('1', 1, (current === 1 ? 'active' : '')); if (start > 2) h += '<span style="color:#999;padding:0 5px">...</span>'; }
             for (var i = start; i <= end; i++) { h += btn(i, i, (current === i ? 'active' : '')); }
             if (end < pages) { if (end < pages - 1) h += '<span style="color:#999;padding:0 5px">...</span>'; h += btn(pages, pages, (current === pages ? 'active' : '')); }
-            if (current < pages) h += btn('>', current + 1);
+            if (current < pages) h += btn('Próxima', current + 1);
             $t.addClass('active').html(h);
         }
     };
-    var app = {
+    
+    var appCor = {
         getFilters: function() {
+            // MAP: ID #cor_tit -> $_POST['f_tit']
             return {
-                f_tit: jQuery('#f_tit').val(), f_sku: jQuery('#f_sku').val(), f_mar: jQuery('#f_mar').val(), f_desc: jQuery('#f_desc').val(), f_spec: jQuery('#f_spec').val(),
-                f_est_liq: jQuery('#f_est_liq').val(), f_est_tab: jQuery('#f_est_tab').val(), f_freq: jQuery('#f_freq').val(), f_custo: jQuery('#f_custo').val()
+                f_tit: jQuery('#cor_tit').val(),
+                f_sku: jQuery('#cor_sku').val(),
+                f_mar: jQuery('#cor_mar').val(),
+                f_desc: jQuery('#cor_desc').val(),
+                f_spec: jQuery('#cor_spec').val(),
+                f_est_liq: jQuery('#cor_est_liq').val(),
+                f_est_tab: jQuery('#cor_est_tab').val(),
+                f_freq: jQuery('#cor_freq').val(),
+                f_custo: jQuery('#cor_custo').val()
             };
         },
         loadData: function(p) {
-            p = parseInt(p, 10) || 1; var filters = this.getFilters(); var size = parseInt(jQuery('#hardness_pageSize').val(), 10) || 50; var url = jQuery('#hardness_ajaxUrl').val(); var sysId = jQuery('#sys_base_divId').val();
-            if (sysId && jQuery('#' + sysId).length) jQuery('#' + sysId).showLoading();
-            jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: jQuery.extend({ ajax: 1, page: p, pageSize: size }, filters), success: function (r) { if (r && r.ok) { jQuery('#content').html(r.html); pager.render('demo', r.total, p, size, 'app.loadData'); } else { jQuery('#content').html('<div class="start-msg">Sem resultados</div>'); jQuery('#demo').removeClass('active').html(''); } }, complete: function () { if (sysId && jQuery('#' + sysId).length) jQuery('#' + sysId).hideLoading(); } });
+            // CORRIGIDO: Busca pageSize e URL dos IDs com sulfixo _cor
+            var pageSizeVal = jQuery('#hardness_pageSize_cor').val();
+            var urlVal      = jQuery('#hardness_ajaxUrl_cor').val();
+            var sysIdVal    = jQuery('#sys_base_divId_cor').val();
+
+            p = parseInt(p, 10) || 1; 
+            var filters = this.getFilters(); 
+            var size = parseInt(pageSizeVal, 10) || 50; 
+            
+            if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
+            
+            // CHAMA appCor.loadData (Isolado)
+            jQuery.ajax({ 
+                url: urlVal, 
+                type: 'POST', 
+                dataType: 'json', 
+                data: jQuery.extend({ ajax: 1, page: p, pageSize: size }, filters), 
+                success: function (r) { 
+                    if (r && r.ok) { 
+                        jQuery('#contentCor').html(r.html); 
+                        pagerCor.render('demoCor', r.total, p, size, 'appCor.loadData'); 
+                    } else { 
+                        jQuery('#contentCor').html('<div class="start-msg" style="text-align:center;padding:40px;color:#999">Nenhum resultado encontrado.</div>'); 
+                        jQuery('#demoCor').removeClass('active').html(''); 
+                    } 
+                }, 
+                complete: function () { 
+                    if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); 
+                } 
+            });
         }
     };
-    function applyFilters() { app.loadData(1); }
-    function exportCSV() {
-        var filters = app.getFilters(); var url = jQuery('#hardness_ajaxUrl').val();
+    
+    function applyFiltersCor() { appCor.loadData(1); }
+    
+    function exportCSVCor() {
+        var filters = appCor.getFilters(); 
+        var url = jQuery('#hardness_ajaxUrl_cor').val(); // ID CORRIGIDO
         var form = document.createElement('form'); form.method = 'POST'; form.action = url; form.target = '_blank';
         var i1 = document.createElement('input'); i1.name = 'ajax'; i1.value = '1'; form.appendChild(i1);
-        var i2 = document.createElement('input'); i2.name = 'action'; i2.value = 'export_csv'; form.appendChild(i2);
+        var i2 = document.createElement('input'); i2.name = 'action'; i2.value = 'export_csv_cor'; form.appendChild(i2);
         for (var key in filters) { if (filters.hasOwnProperty(key)) { var inp = document.createElement('input'); inp.name = key; inp.value = filters[key]; form.appendChild(inp); } }
         document.body.appendChild(form); form.submit(); document.body.removeChild(form);
     }
-    const mVis = document.getElementById('modalVis'), vThumbs = document.getElementById('visThumbs'), vHero = document.getElementById('visHero'), vTitle = document.getElementById('visTitle'), vSku = document.getElementById('visSku'), vBrand = document.getElementById('visBrand'), vDesc = document.getElementById('visDesc'), vSpecs = document.getElementById('visSpecsContent');
-    function abrirVisualizador(sku) {
-        var url = document.getElementById('hardness_ajaxUrl').value; var sysId = document.getElementById('sys_base_divId').value; if (sysId && typeof jQuery !== 'undefined' && jQuery('#' + sysId).length) jQuery('#' + sysId).showLoading();
-        jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'get_details', sku: sku }, success: function (res) { if (res.ok) { vTitle.innerText = res.titulo; vSku.innerText = res.sku; vBrand.innerText = res.marca; vDesc.innerHTML = res.desc ? res.desc : '<em>Sem descrição.</em>'; vThumbs.innerHTML = ''; if (res.imgs.length > 0) vHero.src = res.imgs[0]; res.imgs.forEach((url, idx) => { let img = document.createElement('img'); img.src = url; img.className = 'vis-mini'; if (idx === 0) img.classList.add('active'); img.onclick = () => { vHero.src = url; document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active')); img.classList.add('active'); }; vThumbs.appendChild(img); }); let h = '<table class="vis-specs-table">'; let has = false; if (res.specs.EAN) { h += `<tr><td><strong>EAN:</strong> ${res.specs.EAN}</td></tr>`; has = true; } if (res.specs.Garantia) { h += `<tr><td><strong>Garantia:</strong> ${res.specs.Garantia}</td></tr>`; has = true; } if (res.specs.Peso) { h += `<tr><td><strong>Peso:</strong> ${res.specs.Peso}</td></tr>`; has = true; } if (res.specs.Altura) { h += `<tr><td><strong>Altura:</strong> ${res.specs.Altura}</td></tr>`; has = true; } if (res.specs.Largura) { h += `<tr><td><strong>Largura:</strong> ${res.specs.Largura}</td></tr>`; has = true; } if (res.specs.Comprimento) { h += `<tr><td><strong>Comp.:</strong> ${res.specs.Comprimento}</td></tr>`; has = true; } h += '</table>'; vSpecs.innerHTML = has ? h : '<div style="color:#999;font-size:12px">Vazio</div>'; mVis.style.display = 'flex'; } else { alert(res.msg || 'Erro ao carregar'); } }, error: function () { alert('Erro na comunicação'); }, complete: function () { if (sysId && typeof jQuery !== 'undefined' && jQuery('#' + sysId).length) jQuery('#' + sysId).hideLoading(); } });
+    
+    const mVisCor = document.getElementById('modalVisCor'), vThumbsCor = document.getElementById('visThumbsCor'), vHeroCor = document.getElementById('visHeroCor'), vTitleCor = document.getElementById('visTitleCor'), vSkuCor = document.getElementById('visSkuCor'), vBrandCor = document.getElementById('visBrandCor'), vDescCor = document.getElementById('visDescCor'), vSpecsCor = document.getElementById('visSpecsContentCor');
+    
+    function abrirVisualizadorCor(sku) {
+        var url = document.getElementById('hardness_ajaxUrl_cor').value; // ID CORRIGIDO
+        var sysId = document.getElementById('sys_base_divId_cor').value; // ID CORRIGIDO
+        
+        if (sysId && typeof jQuery !== 'undefined' && jQuery('#' + sysId).length) jQuery('#' + sysId).showLoading();
+        
+        jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'get_details_cor', sku: sku }, success: function (res) { if (res.ok) { vTitleCor.innerText = res.titulo; vSkuCor.innerText = res.sku; vBrandCor.innerText = res.marca; vDescCor.innerHTML = res.desc ? res.desc : '<em>Sem descrição.</em>'; vThumbsCor.innerHTML = ''; if (res.imgs.length > 0) vHeroCor.src = res.imgs[0]; res.imgs.forEach((url, idx) => { let img = document.createElement('img'); img.src = url; img.className = 'vis-mini'; if (idx === 0) img.classList.add('active'); img.onclick = () => { vHeroCor.src = url; document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active')); img.classList.add('active'); }; vThumbsCor.appendChild(img); }); let h = '<table class="vis-specs-table">'; let has = false; if (res.specs.EAN) { h += `<tr><td><strong>EAN:</strong> ${res.specs.EAN}</td></tr>`; has = true; } if (res.specs.Garantia) { h += `<tr><td><strong>Garantia:</strong> ${res.specs.Garantia}</td></tr>`; has = true; } if (res.specs.Peso) { h += `<tr><td><strong>Peso:</strong> ${res.specs.Peso}</td></tr>`; has = true; } if (res.specs.Altura) { h += `<tr><td><strong>Altura:</strong> ${res.specs.Altura}</td></tr>`; has = true; } if (res.specs.Largura) { h += `<tr><td><strong>Largura:</strong> ${res.specs.Largura}</td></tr>`; has = true; } if (res.specs.Comprimento) { h += `<tr><td><strong>Comp.:</strong> ${res.specs.Comprimento}</td></tr>`; has = true; } h += '</table>'; vSpecsCor.innerHTML = has ? h : '<div style="color:#999;font-size:12px">Vazio</div>'; mVisCor.style.display = 'flex'; } else { alert(res.msg || 'Erro ao carregar'); } }, error: function () { alert('Erro na comunicação'); }, complete: function () { if (sysId && typeof jQuery !== 'undefined' && jQuery('#' + sysId).length) jQuery('#' + sysId).hideLoading(); } });
     }
-    function fecharVis() { mVis.style.display = 'none'; }
-    function imprimirConteudoModal() { const f = document.createElement('iframe'); f.style.display = 'none'; document.body.appendChild(f); const d = f.contentWindow.document; const s = vSpecs.innerHTML; const c = `<html><head><style>body{font-family:Arial,sans-serif;padding:20px;color:#333}h1{font-size:24px;margin-bottom:5px}.meta{color:#666;font-size:12px;margin-bottom:20px;border-bottom:1px solid #ccc;padding-bottom:10px}.hero{text-align:center;margin-bottom:20px}.hero img{max-width:300px;max-height:300px}.desc{font-size:12px;line-height:1.5;margin-bottom:20px}.specs-box{border:1px solid #eee;padding:10px;border-radius:5px}.specs-box table{width:100%;font-size:12px}.specs-box td{padding:4px 0}</style></head><body><h1>${vTitle.innerText}</h1><div class="meta">SKU: ${vSku.innerText}</div><div class="hero"><img src="${vHero.src}"></div><h3>Descrição</h3><div class="desc">${vDesc.innerHTML}</div><h3>Specs</h3><div class="specs-box">${s}</div></body></html>`; d.open(); d.write(c); d.close(); setTimeout(() => { f.contentWindow.print(); setTimeout(() => document.body.removeChild(f), 1000); }, 200); }
-    document.addEventListener('keydown', e => { if (e.key === "Escape") fecharVis() });
+    function fecharVisCor() { mVisCor.style.display = 'none'; }
+    function imprimirConteudoModalCor() { const f = document.createElement('iframe'); f.style.display = 'none'; document.body.appendChild(f); const d = f.contentWindow.document; const s = vSpecsCor.innerHTML; const c = `<html><head><style>body{font-family:Arial,sans-serif;padding:20px;color:#333}h1{font-size:20px;margin-bottom:5px}.meta{color:#666;font-size:12px;margin-bottom:20px;border-bottom:1px solid #ccc;padding-bottom:10px}.hero{text-align:center;margin-bottom:20px}.hero img{max-width:300px;max-height:300px}.desc{font-size:12px;line-height:1.5;margin-bottom:20px; text-align:justify;}.specs-box{border:1px solid #eee;padding:10px;border-radius:5px}.specs-box table{width:100%;font-size:12px}.specs-box td{padding:4px 0}</style></head><body><h1>${vTitleCor.innerText}</h1><div class="meta">SKU: ${vSkuCor.innerText} | ${vBrandCor.innerText}</div><div class="hero"><img src="${vHeroCor.src}"></div><h3>Descrição</h3><div class="desc">${vDescCor.innerHTML}</div><h3>Specs</h3><div class="specs-box">${s}</div></body></html>`; d.open(); d.write(c); d.close(); setTimeout(() => { f.contentWindow.print(); setTimeout(() => document.body.removeChild(f), 1000); }, 200); }
+    document.addEventListener('keydown', e => { if (e.key === "Escape") fecharVisCor() });
 </script>
