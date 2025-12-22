@@ -61,7 +61,6 @@ function renderCorrectionRowIsolado($row) {
     $marcaHtml = htmlspecialchars($marca, ENT_QUOTES);
     $idAny     = !empty($row['D001F_Id_Any']) ? $row['D001F_Id_Any'] : 'ND';
 
-    // TIPO (Correção ou Modificação)
     $tipoRaw = isset($row['D001F_Tipo']) ? $row['D001F_Tipo'] : 'corr';
     if ($tipoRaw === 'mod') {
         $tipoHtml = "<div class='badge-type badge-type-mod'><i class='material-icons'>edit_note</i><span>MODIFICAÇÃO</span></div>";
@@ -69,7 +68,6 @@ function renderCorrectionRowIsolado($row) {
         $tipoHtml = "<div class='badge-type badge-type-corr'><i class='material-icons'>build_circle</i><span>CORREÇÃO</span></div>";
     }
 
-    // Specs
     $specHtml = "";
     if (!empty($row['D001F_EAN'])) $specHtml .= "<span><b>EAN:</b> {$row['D001F_EAN']}</span>";
     if (!empty($row['D001F_garantia'])) $specHtml .= "<span><b>Gar:</b> {$row['D001F_garantia']}</span>";
@@ -77,7 +75,6 @@ function renderCorrectionRowIsolado($row) {
     if (!empty($row['D001F_altura'])) $specHtml .= "<span><b>Dim:</b> " . ($row['D001F_altura'] ?: 0) . "x" . ($row['D001F_largura'] ?: 0) . "x" . ($row['D001F_comprimento'] ?: 0) . "</span>";
     if (empty($specHtml)) $specHtml = "<span style='color:#bbb'>Vazio</span>";
 
-    // Métricas (D009)
     $freqVenda = !empty($row['D009_Frequencia_Venda']) ? $row['D009_Frequencia_Venda'] : '0';
     $custoVal  = isset($row['D009_Valor_Custo_Unitario']) ? (float) $row['D009_Valor_Custo_Unitario'] : 0;
     $estTab    = isset($row['D009_Quantidade_Estoque_Tabela']) ? (int) $row['D009_Quantidade_Estoque_Tabela'] : 0;
@@ -87,17 +84,12 @@ function renderCorrectionRowIsolado($row) {
     $estTabHtml = ($estTab > 0) ? $estTab : "0";
     $estLiqHtml = ($estLiq > 0) ? $estLiq : "0";
 
-    // Adicionado ID na row para remoção via AJAX
     return "
     <div class='quality-row' id='row_cor_{$id}'>
-        <div class='col-type'>
-            $tipoHtml
-        </div>
-
+        <div class='col-type'>$tipoHtml</div>
         <div class='thumb-box' onclick='abrirVisualizadorCor(\"$sku\")'>
             <img src='$imgCapa' alt='Capa'>
         </div>
-        
         <div class='col-info'>
             <div class='prod-title'>{$row['D001F_Titulo']}</div>
             <div class='prod-sub'>
@@ -106,25 +98,17 @@ function renderCorrectionRowIsolado($row) {
                 <span class='badge-brand' title='$marcaHtml'>Marca: $marcaHtml</span>
             </div>
         </div>
-        
         <div class='col-metrics'>
             <div class='metric-item' title='Frequência de Venda'><span class='m-lbl'>FREQ</span> <span class='m-val'>$freqVenda</span></div>
             <div class='metric-item' title='Custo Unitário'><span class='m-lbl'>CUSTO</span> <span class='m-val text-blue'>$custoHtml</span></div>
             <div class='metric-item' title='Estoque Tabela'><span class='m-lbl'>TAB</span> <span class='m-val'>$estTabHtml</span></div>
             <div class='metric-item' title='Estoque Líquido'><span class='m-lbl'>LIQ</span> <span class='m-val'>$estLiqHtml</span></div>
         </div>
-
         <div class='col-box-scroll content-desc'>" . ($descRaw ?: '<em>Sem descrição</em>') . "</div>
-        
         <div class='col-box-scroll content-spec'>$specHtml</div>
-        
         <div class='col-actions'>
-             <button class='btn-action-icon btn-edit' onclick='abrirEditorCor(\"$id\")' title='Editar e Salvar'>
-                <i class='material-icons'>edit</i>
-             </button>
-             <button class='btn-action-icon' onclick='abrirVisualizadorCor(\"$sku\")' title='Visualizar Detalhes'>
-                <i class='material-icons'>visibility</i>
-             </button>
+             <button class='btn-action-icon btn-edit' onclick='abrirEditorCor(\"$id\")' title='Editar e Salvar'><i class='material-icons'>edit</i></button>
+             <button class='btn-action-icon' onclick='abrirVisualizadorCor(\"$sku\")' title='Visualizar Detalhes'><i class='material-icons'>visibility</i></button>
         </div>
     </div>";
 }
@@ -141,30 +125,23 @@ if ($isAjax) {
         }
     }
 
+    // --- SMART WHERE (FILTROS) ---
     if (!function_exists('getSmartWhereCor')) {
         function getSmartWhereCor($col, $val, $mode = 'text') {
             $val = trim($val);
             if ($val === '') return null;
             if (strpos($val, ';') !== false) {
                 $parts = explode(';', $val);
-                $arr = [];
-                $orLike = [];
+                $arr = []; $orLike = [];
                 foreach($parts as $p) {
-                    $p = trim($p);
-                    if($p === '') continue;
-                    if ($mode === 'number') {
-                        $p = str_replace(',', '.', $p); 
-                        if(is_numeric($p)) $arr[] = $p;
-                    } else {
-                        $cleanP = mysql_real_escape_string($p);
-                        $orLike[] = "$col LIKE '%$cleanP%'";
-                    }
+                    $p = trim($p); if($p === '') continue;
+                    if ($mode === 'number') { $p = str_replace(',', '.', $p); if(is_numeric($p)) $arr[] = $p; } 
+                    else { $cleanP = mysql_real_escape_string($p); $orLike[] = "$col LIKE '%$cleanP%'"; }
                 }
                 if ($mode === 'number' && !empty($arr)) return "$col IN (" . implode(',', $arr) . ")";
                 if ($mode === 'text' && !empty($orLike)) return "(" . implode(" OR ", $orLike) . ")";
             }
-            $op = '';
-            $cleanVal = $val;
+            $op = ''; $cleanVal = $val;
             if (isset($val[0])) {
                 if ($val[0] === '>') { $op = '>'; $cleanVal = substr($val, 1); }
                 elseif ($val[0] === '<') { $op = '<'; $cleanVal = substr($val, 1); }
@@ -210,6 +187,7 @@ if ($isAjax) {
         $rs = mysql_query($sql);
         if ($rs && mysql_num_rows($rs) > 0) {
             $r = mysql_fetch_assoc($rs);
+            // REMOVIDA A CONVERSÃO DE ACENTOS (Deixa natural do banco)
             $imgs = [];
             for($i=1; $i<=10; $i++) $imgs[$i] = $r["D001F_Imagem_$i"];
             echo json_encode(['ok' => 1, 'data' => $r, 'imgs' => $imgs]);
@@ -223,7 +201,6 @@ if ($isAjax) {
     if (isset($_POST['action']) && $_POST['action'] === 'save_edit_cor') {
         $idF = (int)$_POST['id'];
         $sku = cleanInputCor($_POST['sku']);
-        
         if ($idF <= 0 || empty($sku)) { echo json_encode(['ok' => 0, 'msg' => 'Dados inválidos.']); exit; }
 
         $tit = cleanInputCor($_POST['titulo']);
@@ -267,19 +244,209 @@ if ($isAjax) {
         exit;
     }
 
+    // [ACTION] PARSE IMPORT CSV (TRIAGEM INTELIGENTE)
+    if (isset($_POST['action']) && $_POST['action'] === 'parse_import_csv_cor') {
+        if (!isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] != 0) {
+            echo json_encode(['ok' => 0, 'msg' => 'Erro no upload do arquivo.']); exit;
+        }
+
+        $tmpName = $_FILES['csv_file']['tmp_name'];
+        $handle = fopen($tmpName, 'r');
+        if (!$handle) { echo json_encode(['ok' => 0, 'msg' => 'Não foi possível ler o arquivo.']); exit; }
+
+        $header = fgetcsv($handle, 0, ';');
+        // Remover BOM do Excel
+        if (substr($header[0], 0, 3) == pack('CCC', 0xef, 0xbb, 0xbf)) {
+            $header[0] = substr($header[0], 3);
+        }
+
+        $protectedFields = ['D001F_Id', 'D001F_Tipo', 'D001F_Id_Any', 'D001F_D001_Id', 'D001F_D001_Codigo_Produto'];
+        $changes = [];
+
+        while (($row = fgetcsv($handle, 0, ';')) !== FALSE) {
+            if (count($row) < count($header)) continue;
+            
+            // REMOVIDO UTF8_ENCODE AQUI TAMBEM
+            $data = array_combine($header, $row);
+            
+            // Limpa formatação Excel (="VALOR")
+            foreach($data as $k => $v) {
+                if(substr($v, 0, 2) === '="') $data[$k] = substr($v, 2, -1);
+            }
+
+            $sku = trim($data['D001F_D001_Codigo_Produto']);
+            $idF = (int)$data['D001F_Id'];
+
+            if (empty($sku) || $idF <= 0) continue;
+
+            $sqlE = "SELECT * FROM D001E WHERE D001E_D001_Codigo_Produto = '" . mysql_real_escape_string($sku) . "' LIMIT 1";
+            $rsE = mysql_query($sqlE);
+            if ($rsE && mysql_num_rows($rsE) > 0) {
+                $curr = mysql_fetch_assoc($rsE);
+                $diffs = [];
+
+                $fieldsToCheck = [
+                    'D001F_Titulo' => 'D001E_Sku_Titulo', 'D001F_Descricao' => 'D001E_Descricao',
+                    'D001F_EAN' => 'D001E_EAN', 'D001F_garantia' => 'D001E_garantia',
+                    'D001F_peso' => 'D001E_peso', 'D001F_altura' => 'D001E_altura',
+                    'D001F_largura' => 'D001E_largura', 'D001F_comprimento' => 'D001E_comprimento'
+                ];
+                for($i=1;$i<=10;$i++) $fieldsToCheck["D001F_Imagem_$i"] = "D001E_Imagem_$i";
+
+                foreach ($fieldsToCheck as $csvKey => $dbKey) {
+                    if (isset($data[$csvKey]) && !in_array($csvKey, $protectedFields)) {
+                        $newVal = trim($data[$csvKey]);
+                        $oldVal = trim($curr[$dbKey]);
+                        
+                        if ($newVal != $oldVal) {
+                            $fieldName = str_replace('D001F_', '', $csvKey);
+                            
+                            if($csvKey == 'D001F_Descricao') {
+                                $safeHtmlVal = htmlspecialchars($newVal, ENT_QUOTES); 
+                                $displayHtml = "<button class='h-btn-xs' type='button' onclick='openHtmlModal(`$safeHtmlVal`)'>Visualizar Layout Novo</button>";
+                            } 
+                            elseif($csvKey == 'D001F_Titulo') {
+                                $safeOld = htmlspecialchars($oldVal, ENT_QUOTES);
+                                $safeNew = htmlspecialchars($newVal, ENT_QUOTES);
+                                $displayHtml = "<button class='btn-diff-view' type='button' onclick='openDiffModal(\"$fieldName\", `$safeOld`, `$safeNew`)'>Comparar Título</button>";
+                            }
+                            else {
+                                $displayHtml = "<div class='diff-short'><span class='diff-old'>$oldVal</span> <i class='material-icons' style='font-size:10px'>arrow_forward</i> <span class='diff-new'>$newVal</span></div>";
+                            }
+                            
+                            $diffs[] = [
+                                'field' => $fieldName,
+                                'html' => $displayHtml
+                            ];
+                        }
+                    }
+                }
+
+                if (count($diffs) > 0) {
+                    $payloadData = $data;
+                    foreach($protectedFields as $pf) unset($payloadData[$pf]);
+                    $payloadData['D001F_Id'] = $idF;
+                    $payloadData['D001F_D001_Codigo_Produto'] = $sku;
+
+                    $changes[] = [
+                        'idF' => $idF, 'sku' => $sku, 'title' => $curr['D001E_Sku_Titulo'],
+                        'diffs' => $diffs, 'newData' => $payloadData
+                    ];
+                }
+            }
+        }
+        fclose($handle);
+
+        $html = '';
+        if (count($changes) > 0) {
+            foreach ($changes as $idx => $c) {
+                $diffRows = '';
+                foreach ($c['diffs'] as $d) {
+                    $diffRows .= "<tr><td class='td-label'>{$d['field']}</td><td class='td-val'>{$d['html']}</td></tr>";
+                }
+                
+                $jsonPayload = htmlspecialchars(json_encode($c['newData']), ENT_QUOTES, 'UTF-8');
+
+                $html .= "
+                <div class='triage-card'>
+                    <div class='triage-header'>
+                        <label class='triage-check-wrapper'>
+                            <input type='checkbox' class='triage-check-input' value='$idx' checked>
+                            <span class='triage-sku'>{$c['sku']}</span>
+                        </label>
+                        <div class='triage-title'>{$c['title']}</div>
+                    </div>
+                    <div class='triage-body'>
+                        <table class='diff-table'>
+                            $diffRows
+                        </table>
+                    </div>
+                    <input type='text' id='payload_$idx' value='$jsonPayload' style='display:none'>
+                </div>";
+            }
+        } else {
+            $html = "<div class='empty-msg'>Nenhuma alteração detectada no arquivo enviado.</div>";
+        }
+
+        echo json_encode(['ok' => 1, 'html' => $html, 'count' => count($changes)]);
+        exit;
+    }
+
+    // [ACTION] COMMIT IMPORT
+    if (isset($_POST['action']) && $_POST['action'] === 'apply_import_batch_cor') {
+        $payloads = isset($_POST['rows']) ? $_POST['rows'] : [];
+        if (empty($payloads)) { echo json_encode(['ok' => 0, 'msg' => 'Nada selecionado.']); exit; }
+
+        $successCount = 0;
+        foreach ($payloads as $json) {
+            $data = json_decode($json, true);
+            if (!$data) continue;
+
+            $sku = cleanInputCor($data['D001F_D001_Codigo_Produto']);
+            $idF = (int)$data['D001F_Id'];
+
+            $sets = [];
+            $map = [
+                'D001F_Titulo' => 'D001E_Sku_Titulo', 'D001F_Descricao' => 'D001E_Descricao',
+                'D001F_EAN' => 'D001E_EAN', 'D001F_garantia' => 'D001E_garantia',
+                'D001F_peso' => 'D001E_peso', 'D001F_altura' => 'D001E_altura',
+                'D001F_largura' => 'D001E_largura', 'D001F_comprimento' => 'D001E_comprimento'
+            ];
+            for($i=1;$i<=10;$i++) $map["D001F_Imagem_$i"] = "D001E_Imagem_$i";
+
+            foreach ($map as $csvKey => $dbKey) {
+                if (isset($data[$csvKey])) {
+                    $val = mysql_real_escape_string(trim($data[$csvKey]));
+                    $sets[] = "$dbKey = '$val'";
+                }
+            }
+            $sets[] = "D001E_ult_att = NOW()";
+
+            if (!empty($sets)) {
+                $sqlUp = "UPDATE D001E SET " . implode(', ', $sets) . " WHERE D001E_D001_Codigo_Produto = '$sku'";
+                if (mysql_query($sqlUp)) {
+                    mysql_query("DELETE FROM D001F WHERE D001F_Id = $idF");
+                    $successCount++;
+                }
+            }
+        }
+        echo json_encode(['ok' => 1, 'msg' => "$successCount itens atualizados."]);
+        exit;
+    }
+
+    // [EXPORTAÇÃO CSV EXCEL-SAFE]
     if (isset($_POST['action']) && $_POST['action'] === 'export_csv_cor') {
         $whereStr = buildWhereCor($_POST);
         $sqlCsv = "SELECT T1.* FROM D001F AS T1 LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001F_D001_Id LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id) WHERE $whereStr GROUP BY T1.D001F_Id ORDER BY T1.D001F_Id ASC";
         $rsCsv = mysql_query($sqlCsv);
+        
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename=correcao_produtos_' . date('YmdHis') . '.csv');
         $out = fopen('php://output', 'w');
         fputs($out, "\xEF\xBB\xBF");
+        
         $header = ['D001F_Id','D001F_Tipo','D001F_Id_Any','D001F_D001_Id','D001F_D001_Codigo_Produto','D001F_Titulo','D001F_Marca','D001F_Descricao','D001F_Imagem_1','D001F_Imagem_2','D001F_Imagem_3','D001F_Imagem_4','D001F_Imagem_5','D001F_Imagem_6','D001F_Imagem_7','D001F_Imagem_8','D001F_Imagem_9','D001F_Imagem_10','D001F_EAN','D001F_garantia','D001F_peso','D001F_altura','D001F_largura','D001F_comprimento','D001F_ult_att'];
         fputcsv($out, $header, ';');
-        function simpleCleanCor($str) { if (is_null($str)) return ''; $str = str_replace(["\r\n", "\r", "\n", "\t"], ' ', $str); return trim($str); }
+        
+        function cleanCSV($str) { if (is_null($str)) return ''; $str = str_replace(["\r\n", "\r", "\n", "\t"], ' ', $str); return trim($str); }
+        // FORMULA MAGICA EXCEL
+        function excelSafe($val) {
+            $val = cleanCSV($val);
+            if(is_numeric($val) && strlen($val) > 8) return '="' . $val . '"';
+            return $val;
+        }
+
         if ($rsCsv) { while ($row = mysql_fetch_assoc($rsCsv)) {
-            $line = [$row['D001F_Id'],$row['D001F_Tipo'],$row['D001F_Id_Any'],$row['D001F_D001_Id'],simpleCleanCor($row['D001F_D001_Codigo_Produto']),simpleCleanCor($row['D001F_Titulo']),simpleCleanCor($row['D001F_Marca']),simpleCleanCor($row['D001F_Descricao']),$row['D001F_Imagem_1'],$row['D001F_Imagem_2'],$row['D001F_Imagem_3'],$row['D001F_Imagem_4'],$row['D001F_Imagem_5'],$row['D001F_Imagem_6'],$row['D001F_Imagem_7'],$row['D001F_Imagem_8'],$row['D001F_Imagem_9'],$row['D001F_Imagem_10'],simpleCleanCor($row['D001F_EAN']),simpleCleanCor($row['D001F_garantia']),simpleCleanCor($row['D001F_peso']),simpleCleanCor($row['D001F_altura']),simpleCleanCor($row['D001F_largura']),simpleCleanCor($row['D001F_comprimento']),$row['D001F_ult_att']];
+            $line = [
+                $row['D001F_Id'], $row['D001F_Tipo'], $row['D001F_Id_Any'], $row['D001F_D001_Id'],
+                excelSafe($row['D001F_D001_Codigo_Produto']), 
+                cleanCSV($row['D001F_Titulo']), cleanCSV($row['D001F_Marca']), cleanCSV($row['D001F_Descricao']),
+                $row['D001F_Imagem_1'],$row['D001F_Imagem_2'],$row['D001F_Imagem_3'],$row['D001F_Imagem_4'],$row['D001F_Imagem_5'],$row['D001F_Imagem_6'],$row['D001F_Imagem_7'],$row['D001F_Imagem_8'],$row['D001F_Imagem_9'],$row['D001F_Imagem_10'],
+                excelSafe($row['D001F_EAN']), 
+                cleanCSV($row['D001F_garantia']), cleanCSV($row['D001F_peso']), cleanCSV($row['D001F_altura']),
+                cleanCSV($row['D001F_largura']), cleanCSV($row['D001F_comprimento']),
+                $row['D001F_ult_att']
+            ];
             fputcsv($out, $line, ';');
         }}
         fclose($out);
@@ -288,18 +455,20 @@ if ($isAjax) {
 
     header('Content-Type: application/json; charset=UTF-8');
 
+    // [ACTION] GET DETAILS (D001F) - REMOVIDO UTF8_ENCODE
     if (isset($_POST['action']) && $_POST['action'] === 'get_details_cor') {
         $skuBusca = isset($_POST['sku']) ? mysql_real_escape_string($_POST['sku']) : '';
         $sqlDet = "SELECT T1.* FROM D001F AS T1 WHERE T1.D001F_D001_Codigo_Produto = '$skuBusca' LIMIT 1";
         $rsDet  = mysql_query($sqlDet);
         if ($rsDet && mysql_num_rows($rsDet) > 0) {
             $row = mysql_fetch_assoc($rsDet);
+            
+            // REMOVIDO utf8_encode
+            
             $marca = isset($row['D001F_Marca']) ? $row['D001F_Marca'] : 'ND';
             $imgs = [];
             for ($i = 1; $i <= 10; $i++) if (!empty($row["D001F_Imagem_$i"])) $imgs[] = $row["D001F_Imagem_$i"];
-            if (empty($imgs)) $imgs[] = "https://via.placeholder.com/600x600?text=Sem+Imagem";
-            $specs = ['EAN' => $row['D001F_EAN']??'','Garantia' => $row['D001F_garantia']??'','Peso' => $row['D001F_peso']?$row['D001F_peso'].' kg':'','Altura' => $row['D001F_altura']?$row['D001F_altura'].' cm':'','Largura' => $row['D001F_largura']?$row['D001F_largura'].' cm':'','Comprimento' => $row['D001F_comprimento']?$row['D001F_comprimento'].' cm':''];
-            echo json_encode(['ok' => 1, 'titulo' => $row['D001F_Titulo'], 'sku' => $row['D001F_D001_Codigo_Produto'], 'marca' => $marca, 'desc' => $row['D001F_Descricao'], 'imgs' => $imgs, 'specs' => $specs]);
+            echo json_encode(['ok' => 1, 'titulo' => $row['D001F_Titulo'], 'sku' => $row['D001F_D001_Codigo_Produto'], 'marca' => $marca, 'desc' => $row['D001F_Descricao'], 'imgs' => $imgs, 'specs' => []]);
         } else { echo json_encode(['ok' => 0, 'msg' => 'Produto não encontrado']); }
         exit;
     }
@@ -331,83 +500,6 @@ $style = <<<STYLE
     body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: var(--bg-body); margin: 0; padding: 20px; color: var(--text-main); -webkit-font-smoothing: antialiased; }
     .quality-list { max-width: 1600px; margin: 0 auto; position: relative; }
     
-    /* MODAL EDITOR DESIGN (NOVO DESIGN COMPLETAMENTE REFEITO) */
-    .h-modal-content {
-        background: #fff; width: 100%; max-width: 1200px; height: 90vh; border-radius: 12px;
-        position: relative; display: flex; flex-direction: column; overflow: hidden;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-    }
-    .h-modal-header {
-        padding: 16px 24px; border-bottom: 1px solid #e5e7eb; background: #fff;
-        display: flex; justify-content: space-between; align-items: center; z-index: 10;
-    }
-    .h-modal-title { font-size: 16px; font-weight: 800; color: #111827; display: flex; align-items: center; gap: 8px; }
-    .h-modal-body {
-        flex: 1; display: flex; overflow: hidden; background: #f9fafb;
-    }
-    .h-col-left {
-        width: 300px; background: #f3f4f6; border-right: 1px solid #e5e7eb;
-        display: flex; flex-direction: column; overflow-y: auto; padding: 20px; gap: 15px;
-    }
-    .h-col-right {
-        flex: 1; background: #fff; padding: 30px; overflow-y: auto;
-    }
-    .h-modal-footer {
-        padding: 16px 24px; border-top: 1px solid #e5e7eb; background: #fff;
-        display: flex; justify-content: flex-end; gap: 12px; z-index: 10;
-    }
-    
-    /* COMPONENTES DO EDITOR */
-    .h-section-title {
-        font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; display: block;
-    }
-    .h-card-img {
-        background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px;
-        display: flex; align-items: center; gap: 10px; transition: 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-    }
-    .h-card-img:hover { border-color: #d1d5db; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-    .h-thumb { width: 48px; height: 48px; border-radius: 6px; object-fit: contain; border: 1px solid #f3f4f6; flex-shrink: 0; }
-    .h-input-img { border: none; background: transparent; font-size: 12px; color: #374151; width: 100%; outline: none; }
-    .h-input-img::placeholder { color: #9ca3af; }
-
-    .h-main-input {
-        width: 100%; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 8px;
-        font-size: 14px; font-weight: 600; color: #1f2937; transition: all 0.2s;
-    }
-    .h-main-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(0, 152, 211, 0.1); outline: none; }
-    
-    .h-grid-specs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
-    .h-field-group { display: flex; flex-direction: column; gap: 5px; }
-    .h-label { font-size: 12px; font-weight: 600; color: #4b5563; }
-    .h-input-sm { 
-        padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; color: #374151; transition: 0.2s; width: 100%; 
-    }
-    .h-input-sm:focus { border-color: var(--primary); outline: none; }
-
-    .h-editor-box { border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; min-height: 300px; }
-    .h-toolbar { background: #f9fafb; border-bottom: 1px solid #e5e7eb; padding: 8px 12px; display: flex; gap: 8px; }
-    .h-tool-btn { 
-        border: 1px solid transparent; background: transparent; padding: 6px 12px; border-radius: 6px; 
-        font-size: 12px; font-weight: 600; color: #6b7280; cursor: pointer; display: flex; align-items: center; gap: 6px; 
-    }
-    .h-tool-btn:hover { background: #e5e7eb; color: #1f2937; }
-    .h-tool-btn.active { background: #e0f2fe; color: #0098D3; border-color: #bae6fd; }
-    
-    .h-content-area { flex: 1; position: relative; background: #fff; }
-    #editDescPreview { padding: 20px; height: 100%; overflow-y: auto; outline: none; font-size: 14px; line-height: 1.6; color: #374151; }
-    #editDescCode { 
-        width: 100%; height: 100%; padding: 20px; border: none; resize: none; 
-        font-family: 'Menlo', 'Monaco', monospace; font-size: 13px; background: #1e293b; color: #e2e8f0; display: none; 
-    }
-
-    /* BOTÕES */
-    .h-btn { padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: 0.2s; border: 1px solid transparent; }
-    .h-btn-cancel { background: #fff; border-color: #d1d5db; color: #374151; }
-    .h-btn-cancel:hover { background: #f3f4f6; border-color: #9ca3af; }
-    .h-btn-save { background: #10b981; color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-    .h-btn-save:hover { background: #059669; transform: translateY(-1px); box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2); }
-
-    /* FILTERS E GERAL (MANTIDOS) */
     .filter-container { background: var(--bg-card); border-radius: 12px; box-shadow: var(--shadow-md); margin-bottom: 24px; max-width: 1600px; margin: 0 auto 24px auto; border: 1px solid var(--border); overflow: hidden; }
     .filter-header { padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; background: #fff; border-bottom: 1px solid transparent; transition: background 0.2s; }
     .filter-header:hover { background: #f9fafb; }
@@ -421,9 +513,10 @@ $style = <<<STYLE
     .f-input { padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; outline: none; transition: all 0.2s; width: 100%; color: #374151; background: #f9fafb; }
     .f-input:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(0, 152, 211, 0.1); }
     .f-actions { display: flex; justify-content: flex-end; margin-top: 20px; padding-top: 15px; border-top: 1px solid #f3f4f6; gap: 12px; flex-wrap: wrap; }
-    .f-btn-apply, .f-btn-export { border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:8px; transition: all 0.2s; shadow: var(--shadow-sm); }
+    .f-btn-apply, .f-btn-export, .f-btn-import { border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:8px; transition: all 0.2s; shadow: var(--shadow-sm); }
     .f-btn-apply { background: var(--primary); color: #fff; } .f-btn-apply:hover { background: var(--primary-hover); transform: translateY(-1px); }
     .f-btn-export { background: #fff; color: #374151; border: 1px solid #d1d5db; } .f-btn-export:hover { background: #f3f4f6; border-color: #9ca3af; }
+    .f-btn-import { background: #10b981; color: #fff; } .f-btn-import:hover { background: #059669; transform: translateY(-1px); }
     
     .quality-header, .quality-row { display: grid; grid-template-columns: 90px 70px 1.5fr 1fr 1.2fr 1fr 80px; gap: 12px; align-items: center; }
     .quality-header { position: sticky; top: 0; z-index: 100; padding: 12px 16px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; background: #F3F4F6; border-bottom: 2px solid #e5e7eb; margin-bottom: 5px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
@@ -457,33 +550,78 @@ $style = <<<STYLE
     .btn-action-icon:hover { background: #fffbeb; color: #d97706; border-color: #fcd34d; transform: scale(1.05); }
     .btn-edit:hover { background: #e0f2fe; color: #0098D3; border-color: #0098D3; }
 
-    /* Modal Overlay (Comum) */
-    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(4px); padding: 20px; }
-    .modal-content { background: #fff; width: 100%; max-width: 1100px; height: 85vh; border-radius: 16px; position: relative; display: flex; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); }
-    .close-modal { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; color: #9ca3af; transition: 0.2s; } .close-modal:hover { color: #1f2937; }
+    /* Modal EDITOR */
+    .h-modal-content { background: #fff; width: 100%; max-width: 1200px; height: 90vh; border-radius: 12px; position: relative; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); }
+    .h-modal-header { padding: 16px 24px; border-bottom: 1px solid #e5e7eb; background: #fff; display: flex; justify-content: space-between; align-items: center; z-index: 10; }
+    .h-modal-title { font-size: 16px; font-weight: 800; color: #111827; display: flex; align-items: center; gap: 8px; }
+    .h-modal-body { flex: 1; display: flex; overflow: hidden; background: #f9fafb; }
+    .h-col-left { width: 300px; background: #f3f4f6; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; overflow-y: auto; padding: 20px; gap: 15px; }
+    .h-col-right { flex: 1; background: #fff; padding: 30px; overflow-y: auto; }
+    .h-modal-footer { padding: 16px 24px; border-top: 1px solid #e5e7eb; background: #fff; display: flex; justify-content: flex-end; gap: 12px; z-index: 10; }
+    .h-section-title { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; display: block; }
+    .h-card-img { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; display: flex; align-items: center; gap: 10px; transition: 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+    .h-thumb { width: 48px; height: 48px; border-radius: 6px; object-fit: contain; border: 1px solid #f3f4f6; flex-shrink: 0; }
+    .h-input-img { border: none; background: transparent; font-size: 12px; color: #374151; width: 100%; outline: none; }
+    .h-main-input { width: 100%; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-weight: 600; color: #1f2937; transition: all 0.2s; }
+    .h-main-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(0, 152, 211, 0.1); outline: none; }
+    .h-grid-specs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+    .h-field-group { display: flex; flex-direction: column; gap: 5px; }
+    .h-label { font-size: 12px; font-weight: 600; color: #4b5563; }
+    .h-input-sm { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; color: #374151; transition: 0.2s; width: 100%; }
+    .h-input-sm:focus { border-color: var(--primary); outline: none; }
+    .h-editor-box { border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; min-height: 300px; }
+    .h-toolbar { background: #f9fafb; border-bottom: 1px solid #e5e7eb; padding: 8px 12px; display: flex; gap: 8px; }
+    .h-tool-btn { border: 1px solid transparent; background: transparent; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; color: #6b7280; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+    .h-tool-btn.active { background: #e0f2fe; color: #0098D3; border-color: #bae6fd; }
+    .h-content-area { flex: 1; position: relative; background: #fff; }
+    #editDescPreview { padding: 20px; height: 100%; overflow-y: auto; outline: none; font-size: 14px; line-height: 1.6; color: #374151; }
+    #editDescCode { width: 100%; height: 100%; padding: 20px; border: none; resize: none; font-family: 'Menlo', 'Monaco', monospace; font-size: 13px; background: #1e293b; color: #e2e8f0; display: none; }
+    .h-btn { padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: 0.2s; border: 1px solid transparent; }
+    .h-btn-cancel { background: #fff; border-color: #d1d5db; color: #374151; }
+    .h-btn-save { background: #10b981; color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+
+    /* Modal TRIAGEM (DESIGN REFEITO) */
+    #modalImportCor .h-modal-content { max-width: 900px; }
+    .triage-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); overflow: hidden; }
+    .triage-header { background: #f9fafb; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
+    .triage-check-wrapper { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+    .triage-check-input { width: 18px; height: 18px; cursor: pointer; }
+    .triage-sku { font-weight: 700; font-family: monospace; color: #111827; font-size: 13px; background: #e5e7eb; padding: 2px 6px; border-radius: 4px; }
+    .triage-title { font-size: 12px; color: #6b7280; max-width: 500px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     
-    /* Visualizador Styles */
-    .vis-thumbs { width: 110px; background: #f9fafb; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid #e5e7eb; }
-    .vis-mini { width: 100%; height: 80px; object-fit: contain; border-radius: 6px; cursor: pointer; background: #fff; border: 1px solid #e5e7eb; transition: all 0.2s; }
-    .vis-mini.active, .vis-mini:hover { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(0, 152, 211, 0.2); }
-    .vis-main { flex: 1; display: flex; justify-content: center; align-items: center; background: #fff; padding: 30px; position: relative; }
-    .vis-main img { max-width: 100%; max-height: 100%; object-fit: contain; filter: drop-shadow(0 10px 8px rgba(0,0,0,0.04)); }
-    .vis-info { width: 360px; border-left: 1px solid #e5e7eb; padding: 30px; overflow-y: auto; background: #fff; display: flex; flex-direction: column; gap: 20px; }
-    .vis-h1 { font-size: 20px; font-weight: 800; margin: 0; color: #111827; line-height: 1.3; }
-    .vis-meta { font-size: 13px; color: #6b7280; padding-bottom: 15px; border-bottom: 1px solid #e5e7eb; }
-    .vis-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 700; font-size: 12px; color: #374151; text-transform: uppercase; letter-spacing: 0.05em; }
-    .vis-desc-box { font-size: 13px; line-height: 1.6; color: #4b5563; background: #f9fafb; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb; max-height: 200px; overflow-y: auto; }
-    .vis-specs-table { width: 100%; border-collapse: collapse; }
-    .vis-specs-table td { padding: 8px 0; border-bottom: 1px solid #f3f4f6; color: #4b5563; font-size: 13px; }
-    .vis-btn-print { width: 100%; padding: 12px; background: #1f2937; color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.2s; margin-top: auto; }
+    .triage-body { padding: 15px; }
+    .diff-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .diff-table th { text-align: left; padding: 8px; border-bottom: 1px solid #f3f4f6; color: #9ca3af; font-size: 10px; text-transform: uppercase; }
+    .diff-table td { padding: 8px; vertical-align: top; border-bottom: 1px solid #f3f4f6; }
+    .td-label { font-weight: 700; color: #374151; width: 120px; }
+    .diff-short { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+    .diff-old { color: #ef4444; text-decoration: line-through; background: #fef2f2; padding: 2px 6px; border-radius: 4px; }
+    .diff-new { color: #10b981; font-weight: 700; background: #ecfdf5; padding: 2px 6px; border-radius: 4px; }
+    
+    .h-btn-xs { padding: 6px 12px; background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; }
+    .h-btn-xs:hover { background: #bae6fd; }
+    .btn-diff-view { border: 1px solid #bae6fd; background: #e0f2fe; color: #0284c7; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; }
+    
+    /* MODAL DIFF (TEXTO) */
+    .diff-overlay { position: fixed; top:0; left:0; width:100%; height:100%; z-index:100000; background:rgba(0,0,0,0.5); display:none; justify-content:center; align-items:center; }
+    .diff-box-modal { background:#fff; width:900px; height:80vh; border-radius:8px; display:flex; flex-direction:column; box-shadow:0 25px 50px rgba(0,0,0,0.25); }
+    .diff-header { padding:20px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; }
+    .diff-title { font-size:16px; font-weight:700; color:#111827; }
+    .diff-content { flex:1; padding:20px; overflow-y:auto; display:flex; flex-direction:column; gap:20px; }
+    
+    .diff-container-box { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: #fff; }
+    .diff-box-head { background: #f8fafc; border-bottom: 1px solid #e5e7eb; padding: 10px 15px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+    .diff-box-body { padding: 20px; font-size: 14px; line-height: 1.6; color: #334155; }
+    
+    .html-view-content { padding: 20px; }
+    /* Estilos para o diff palavra por palavra */
+    .diff-word-added { background-color: #dcfce7; color: #166534; border-bottom: 2px solid #22c55e; padding: 0 2px; }
+    .diff-word-removed { background-color: #fee2e2; color: #991b1b; text-decoration: line-through; opacity: 0.7; padding: 0 2px; }
 
-    /* Pager */
-    #demoCor { padding: 30px 0; display:none; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px; }
-    #demoCor.active { display: flex; }
-    #demoCor .pg-btn { border: 1px solid #e5e7eb; background:#fff; padding:8px 14px; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; color:#374151; text-decoration: none; transition: all 0.2s; }
-    #demoCor .pg-btn:hover { background: #f9fafb; border-color: #d1d5db; }
-    #demoCor .pg-btn.active { background: var(--primary); border-color: var(--primary); color:#fff; }
-
+    /* Modal Visualizador */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(4px); padding: 20px; }
+    .close-modal { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; transition: 0.2s; color: #9ca3af; } .close-modal:hover { color: #1f2937; }
+    
     @media (max-width: 1400px) { .quality-header, .quality-row { grid-template-columns: 90px 70px 1.2fr 1fr 1.2fr 1fr 80px; gap: 8px; } }
     @media (max-width: 1200px) { 
         .quality-header { display: none; }
@@ -519,6 +657,8 @@ echo "
         <div class='f-actions'>
             <button class='f-btn-apply' onclick='applyFiltersCor()'><i class='material-icons'>search</i> Aplicar Filtros</button>
             <button class='f-btn-export' onclick='exportCSVCor()'><i class='material-icons'>file_download</i> Exportar CSV</button>
+            <button class='f-btn-import' onclick='triggerImportCor()'><i class='material-icons'>upload_file</i> Importar CSV</button>
+            <input type='file' id='fileImportCor' style='display:none' accept='.csv' onchange='processFileCor(this)'>
         </div>
     </div>
 </div>";
@@ -557,22 +697,17 @@ echo "<div id='demoCor'></div></div>";
             <div class="h-modal-title"><i class="material-icons" style="color:var(--primary)">edit_note</i> Editor de Anúncio</div>
             <span class="close-modal" onclick="fecharEditorCor()">×</span>
         </div>
-        
         <div class="h-modal-body">
             <div class="h-col-left">
                 <span class="h-section-title">Imagens do Anúncio</span>
                 <div id="editImgsContainer" style="display:flex; flex-direction:column; gap:10px;"></div>
             </div>
-            
             <div class="h-col-right">
-                <input type="hidden" id="editIdCor">
-                <input type="hidden" id="editSkuCor">
-                
+                <input type="hidden" id="editIdCor"><input type="hidden" id="editSkuCor">
                 <div class="h-field-group" style="margin-bottom:20px;">
                     <label class="h-label">Título do Produto</label>
                     <input type="text" id="editTitulo" class="h-main-input" placeholder="Título completo">
                 </div>
-
                 <div class="h-grid-specs">
                     <div class="h-field-group"><label class="h-label">EAN</label><input type="text" id="editEan" class="h-input-sm"></div>
                     <div class="h-field-group"><label class="h-label">Garantia</label><input type="text" id="editGar" class="h-input-sm"></div>
@@ -581,7 +716,6 @@ echo "<div id='demoCor'></div></div>";
                     <div class="h-field-group"><label class="h-label">Larg (cm)</label><input type="text" id="editLarg" class="h-input-sm"></div>
                     <div class="h-field-group"><label class="h-label">Comp (cm)</label><input type="text" id="editComp" class="h-input-sm"></div>
                 </div>
-
                 <div style="flex:1; display:flex; flex-direction:column;">
                     <label class="h-label" style="margin-bottom:5px;">Descrição</label>
                     <div class="h-editor-box">
@@ -597,11 +731,41 @@ echo "<div id='demoCor'></div></div>";
                 </div>
             </div>
         </div>
-        
         <div class="h-modal-footer">
             <button class="h-btn h-btn-cancel" onclick="fecharEditorCor()">Cancelar</button>
             <button class="h-btn h-btn-save" onclick="salvarEdicaoCor()"><i class="material-icons" style="font-size:16px; color:#fff;">save</i> Salvar Alterações</button>
         </div>
+    </div>
+</div>
+
+<div id="modalImportCor" class="modal-overlay">
+    <div class="h-modal-content" style="height: 80vh;">
+        <div class="h-modal-header">
+            <div class="h-modal-title"><i class="material-icons" style="color:#10b981">playlist_add_check</i> Revisão de Importação</div>
+            <span class="close-modal" onclick="jQuery('#modalImportCor').fadeOut(200)">×</span>
+        </div>
+        <div class="h-modal-body" style="background:#f9fafb; padding:20px;">
+            <div style="flex:1; overflow-y:auto; padding-right:10px;" id="triageBodyCor">
+                </div>
+        </div>
+        <div class="h-modal-footer">
+            <div style="margin-right:auto; font-size:12px; color:#6b7280; display:flex; align-items:center; gap:5px;">
+                <i class="material-icons" style="font-size:14px">info</i> <span>Os itens marcados serão atualizados no banco.</span>
+            </div>
+            <button class="h-btn h-btn-cancel" onclick="jQuery('#modalImportCor').fadeOut(200)">Cancelar</button>
+            <button class="h-btn h-btn-save" onclick="confirmImportCor()">Confirmar e Salvar</button>
+        </div>
+    </div>
+</div>
+
+<div id="diffModal" class="diff-overlay">
+    <div class="diff-box-modal">
+        <div class="diff-header">
+            <span class="diff-title" id="diffFieldTitle">Visualização</span>
+            <i class="material-icons" style="cursor:pointer" onclick="jQuery('#diffModal').fadeOut(100)">close</i>
+        </div>
+        <div class="diff-content" id="diffModalContent">
+            </div>
     </div>
 </div>
 
@@ -662,6 +826,108 @@ echo "<div id='demoCor'></div></div>";
         document.body.appendChild(form); form.submit(); document.body.removeChild(form);
     }
     
+    // --- IMPORTAÇÃO ---
+    function triggerImportCor() { jQuery('#fileImportCor').click(); }
+    function processFileCor(input) {
+        if(input.files && input.files[0]) {
+            var url = jQuery('#hardness_ajaxUrl_cor').val();
+            var sysId = jQuery('#sys_base_divId_cor').val();
+            var fd = new FormData();
+            fd.append('ajax', 1); fd.append('action', 'parse_import_csv_cor'); fd.append('csv_file', input.files[0]);
+            
+            if(sysId) jQuery('#'+sysId).showLoading();
+            jQuery.ajax({
+                url: url, type: 'POST', data: fd, contentType: false, processData: false, dataType: 'json',
+                success: function(res) {
+                    if(res.ok) {
+                        jQuery('#triageBodyCor').html(res.html);
+                        jQuery('#modalImportCor').fadeIn(200).css('display', 'flex');
+                    } else { alert(res.msg); }
+                    input.value = '';
+                },
+                error: function() { alert('Erro ao processar arquivo.'); input.value = ''; },
+                complete: function() { if(sysId) jQuery('#'+sysId).hideLoading(); }
+            });
+        }
+    }
+    
+    // Mostra APENAS o novo HTML renderizado
+    function openHtmlModal(htmlContent) {
+        jQuery('#diffFieldTitle').text('Visualização do Novo Layout');
+        jQuery('#diffModalContent').html(
+            '<div class="diff-container-box">' +
+            '<div class="diff-box-head" style="color:#15803d;">Novo Conteúdo Renderizado (Como ficará no site)</div>' +
+            '<div class="diff-box-body">' + htmlContent + '</div>' +
+            '</div>'
+        );
+        jQuery('#diffModal').fadeIn(200).css('display', 'flex');
+    }
+
+    // Mostra diff de Texto (Titulo e afins)
+    function openDiffModal(field, oldVal, newVal) {
+        jQuery('#diffFieldTitle').text('Comparativo: ' + field);
+        
+        // Diff simples por palavras
+        var oldArr = oldVal.split(' ');
+        var newArr = newVal.split(' ');
+        var diffHtml = '';
+        
+        // Lógica simples para demonstrar adição/remoção visualmente
+        // Em um cenário real, usaria uma lib tipo diff_match_patch, mas aqui simulamos
+        newArr.forEach(function(word){
+            if(oldVal.indexOf(word) === -1) diffHtml += '<span class="diff-word-added">'+word+'</span> ';
+            else diffHtml += word + ' ';
+        });
+        
+        var oldHtml = '';
+        oldArr.forEach(function(word){
+            if(newVal.indexOf(word) === -1) oldHtml += '<span class="diff-word-removed">'+word+'</span> ';
+            else oldHtml += word + ' ';
+        });
+
+        jQuery('#diffModalContent').html(
+            '<div class="diff-container-box" style="margin-bottom:15px;">' +
+            '<div class="diff-box-head" style="color:#b91c1c;">Original</div>' +
+            '<div class="diff-box-body">' + oldHtml + '</div>' +
+            '</div>' +
+            '<div class="diff-container-box">' +
+            '<div class="diff-box-head" style="color:#15803d;">Novo (Alterações destacadas)</div>' +
+            '<div class="diff-box-body">' + diffHtml + '</div>' +
+            '</div>'
+        );
+        jQuery('#diffModal').fadeIn(200).css('display', 'flex');
+    }
+    
+    function confirmImportCor() {
+        var rows = [];
+        // Seletor corrigido para pegar os cartões
+        jQuery('.triage-check-input:checked').each(function() {
+            var idx = jQuery(this).val();
+            var payload = jQuery('#payload_' + idx).val();
+            if(payload) rows.push(payload);
+        });
+        
+        if(rows.length === 0) { alert('Selecione pelo menos um item para importar.'); return; }
+        if(!confirm('Confirma a atualização de ' + rows.length + ' itens?')) return;
+        
+        var url = jQuery('#hardness_ajaxUrl_cor').val();
+        var sysId = jQuery('#sys_base_divId_cor').val();
+        if(sysId) jQuery('#'+sysId).showLoading();
+        
+        jQuery.ajax({
+            url: url, type: 'POST', dataType: 'json',
+            data: { ajax: 1, action: 'apply_import_batch_cor', rows: rows },
+            success: function(res) {
+                if(res.ok) {
+                    jQuery('#modalImportCor').fadeOut(200);
+                    alert(res.msg);
+                    appCor.loadData(1);
+                } else { alert(res.msg); }
+            },
+            complete: function() { if(sysId) jQuery('#'+sysId).hideLoading(); }
+        });
+    }
+
     // --- LÓGICA DO EDITOR ---
     function abrirEditorCor(id) {
         var url = jQuery('#hardness_ajaxUrl_cor').val();
@@ -684,12 +950,10 @@ echo "<div id='demoCor'></div></div>";
                     jQuery('#editLarg').val(d.D001F_largura);
                     jQuery('#editComp').val(d.D001F_comprimento);
                     
-                    // Descrição
                     jQuery('#editDescPreview').html(d.D001F_Descricao);
                     jQuery('#editDescCode').val(d.D001F_Descricao);
                     toggleDescMode('visual'); 
 
-                    // Imagens
                     var imgHtml = '';
                     for(var i=1; i<=10; i++) {
                         var val = res.imgs[i] || '';
@@ -699,11 +963,8 @@ echo "<div id='demoCor'></div></div>";
                         imgHtml += '</div>';
                     }
                     jQuery('#editImgsContainer').html(imgHtml);
-
                     jQuery('#modalEditCor').fadeIn(200).css('display', 'flex');
-                } else {
-                    alert(res.msg);
-                }
+                } else { alert(res.msg); }
             },
             complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); }
         });
@@ -749,16 +1010,10 @@ echo "<div id='demoCor'></div></div>";
 
         var data = {
             ajax: 1, action: 'save_edit_cor',
-            id: jQuery('#editIdCor').val(),
-            sku: jQuery('#editSkuCor').val(),
-            titulo: jQuery('#editTitulo').val(),
-            desc: descFinal,
-            ean: jQuery('#editEan').val(),
-            gar: jQuery('#editGar').val(),
-            peso: jQuery('#editPeso').val(),
-            alt: jQuery('#editAlt').val(),
-            larg: jQuery('#editLarg').val(),
-            comp: jQuery('#editComp').val()
+            id: jQuery('#editIdCor').val(), sku: jQuery('#editSkuCor').val(),
+            titulo: jQuery('#editTitulo').val(), desc: descFinal,
+            ean: jQuery('#editEan').val(), gar: jQuery('#editGar').val(), peso: jQuery('#editPeso').val(),
+            alt: jQuery('#editAlt').val(), larg: jQuery('#editLarg').val(), comp: jQuery('#editComp').val()
         };
 
         jQuery('.img-inp').each(function() {
@@ -778,9 +1033,7 @@ echo "<div id='demoCor'></div></div>";
                     var rowId = '#row_cor_' + data.id;
                     jQuery(rowId).fadeOut(300, function(){ jQuery(this).remove(); });
                     alert(res.msg);
-                } else {
-                    alert('Erro: ' + res.msg);
-                }
+                } else { alert('Erro: ' + res.msg); }
             },
             error: function() { alert('Erro de comunicação ao salvar.'); },
             complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); }
@@ -797,5 +1050,5 @@ echo "<div id='demoCor'></div></div>";
     }
     function fecharVisCor() { mVisCor.style.display = 'none'; }
     function imprimirConteudoModalCor() { const f = document.createElement('iframe'); f.style.display = 'none'; document.body.appendChild(f); const d = f.contentWindow.document; const s = vSpecsCor.innerHTML; const c = `<html><head><style>body{font-family:Arial,sans-serif;padding:20px;color:#333}h1{font-size:20px;margin-bottom:5px}.meta{color:#666;font-size:12px;margin-bottom:20px;border-bottom:1px solid #ccc;padding-bottom:10px}.hero{text-align:center;margin-bottom:20px}.hero img{max-width:300px;max-height:300px}.desc{font-size:12px;line-height:1.5;margin-bottom:20px; text-align:justify;}.specs-box{border:1px solid #eee;padding:10px;border-radius:5px}.specs-box table{width:100%;font-size:12px}.specs-box td{padding:4px 0}</style></head><body><h1>${vTitleCor.innerText}</h1><div class="meta">SKU: ${vSkuCor.innerText} | ${vBrandCor.innerText}</div><div class="hero"><img src="${vHeroCor.src}"></div><h3>Descrição</h3><div class="desc">${vDescCor.innerHTML}</div><h3>Specs</h3><div class="specs-box">${s}</div></body></html>`; d.open(); d.write(c); d.close(); setTimeout(() => { f.contentWindow.print(); setTimeout(() => document.body.removeChild(f), 1000); }, 200); }
-    document.addEventListener('keydown', e => { if (e.key === "Escape") { fecharVisCor(); fecharEditorCor(); } });
+    document.addEventListener('keydown', e => { if (e.key === "Escape") { fecharVisCor(); fecharEditorCor(); jQuery('#modalImportCor').fadeOut(200); } });
 </script>
