@@ -1,6 +1,6 @@
 <?php
 /*
- PAINEL DE MELHORIA DE ANUNCIO (D001E) - CSS E JS ISOLADOS (SUFIXO _MEL)
+  PAINEL DE MELHORIA DE ANUNCIO (D001E) - CSS E JS ISOLADOS (SUFIXO _MEL)
  */
 namespace hardness;
 
@@ -49,14 +49,6 @@ if (!$isAjax) {
 // =============================================================================
 // [FUNC] FUNÇÕES DE CÁLCULO (SCORE) - COM SUFIXO _MEL
 // =============================================================================
-if (!function_exists('extrairMarcaJsonAnyMarketMel')) {
-    function extrairMarcaJsonAnyMarketMel($jsonString) {
-        if (empty($jsonString)) return "";
-        $obj = json_decode($jsonString);
-        if (isset($obj->content[0]->brand->name)) return trim($obj->content[0]->brand->name);
-        return "";
-    }
-}
 if (!function_exists('analiseTituloMel')) {
     function analiseTituloMel($titulo) {
         $len = mb_strlen(trim($titulo));
@@ -163,20 +155,10 @@ if (!function_exists('gerarTooltipHtmlMel')) {
 // [RENDER] FUNÇÃO DE LINHA (D001E)
 // =============================================================================
 function renderQualityRowMel($row) {
-    $marca       = isset($row['D001E_Marca']) ? $row['D001E_Marca'] : '';
-    $updateMarca = false;
-    if (empty($marca) && !empty($row['D001E_Json_Nativo'])) {
-        $marcaExtraida = extrairMarcaJsonAnyMarketMel($row['D001E_Json_Nativo']);
-        if (!empty($marcaExtraida)) {
-            $marca       = $marcaExtraida;
-            $updateMarca = true;
-        } else {
-            $marca = "ND";
-        }
-    }
-
+    $marca = isset($row['D001E_Marca']) ? $row['D001E_Marca'] : 'ND';
+    
     // SCORE
-    $resT  = analiseTituloMel($row['D001E_Titulo']);
+    $resT  = analiseTituloMel($row['D001E_Sku_Titulo']);
     $resD  = analiseDescricaoMel($row['D001E_Descricao']);
     $resI  = analiseImagensMel($row);
     $resA  = analiseAtributosMel($row);
@@ -197,11 +179,6 @@ function renderQualityRowMel($row) {
     if ($row['D001E_pont_img'] != $resI['nota']) $sqlSets[] = "D001E_pont_img = {$resI['nota']}";
     if ($row['D001E_pont_espec'] != $resA['nota']) $sqlSets[] = "D001E_pont_espec = {$resA['nota']}";
 
-    if ($updateMarca) {
-        $marcaSafe = mysql_real_escape_string($marca);
-        $sqlSets[] = "D001E_Marca = '$marcaSafe'";
-    }
-
     if (!empty($sqlSets)) {
         $sqlUpdate = "UPDATE D001E SET " . implode(', ', $sqlSets) . " WHERE D001E_Id = $idProd";
         mysql_query($sqlUpdate);
@@ -218,11 +195,12 @@ function renderQualityRowMel($row) {
     }
 
     $imgCapa   = $row['D001E_Imagem_1'] ?: "https://via.placeholder.com/100x100?text=Sem+Img";
-    $titulo    = htmlspecialchars($row['D001E_Titulo'], ENT_QUOTES);
+    $titulo    = htmlspecialchars($row['D001E_Sku_Titulo'], ENT_QUOTES);
     $skuRaw    = $row['D001E_D001_Codigo_Produto'];
     $sku       = htmlspecialchars($skuRaw, ENT_QUOTES);
     $descRaw   = $row['D001E_Descricao'];
     $marcaHtml = htmlspecialchars($marca, ENT_QUOTES);
+    $idAny     = !empty($row['D001E_Id_Any']) ? $row['D001E_Id_Any'] : 'ND';
 
     $specHtml = "";
     if (!empty($row['D001E_EAN'])) $specHtml .= "<b>EAN:</b> {$row['D001E_EAN']}<br>";
@@ -252,10 +230,11 @@ function renderQualityRowMel($row) {
         </div>
         
         <div class='col-info'>
-            <div class='prod-title'>{$row['D001E_Titulo']}</div>
+            <div class='prod-title'>{$row['D001E_Sku_Titulo']}</div>
             <div class='prod-sub'>
-                <span class='badge-sku'>$sku</span>
-                <span class='badge-brand' title='$marcaHtml'>$marcaHtml</span>
+                <span class='badge-any' title='ID AnyMarket'>Id Any: $idAny</span>
+                <span class='badge-sku'>Sku: $sku</span>
+                <span class='badge-brand' title='$marcaHtml'>Marca: $marcaHtml</span>
             </div>
         </div>
         
@@ -312,6 +291,57 @@ if ($isAjax) {
         }
     }
 
+    // --- FUNÇÃO MASTER DE FILTROS INTELIGENTES (TEXTO E NÚMERO) ---
+    if (!function_exists('getSmartWhereMel')) {
+        function getSmartWhereMel($col, $val, $mode = 'text') {
+            $val = trim($val);
+            if ($val === '') return null;
+
+            if (strpos($val, ';') !== false) {
+                $parts = explode(';', $val);
+                $arr = [];
+                $orLike = [];
+                foreach($parts as $p) {
+                    $p = trim($p);
+                    if($p === '') continue;
+                    if ($mode === 'number') {
+                        $p = str_replace(',', '.', $p); 
+                        if(is_numeric($p)) $arr[] = $p;
+                    } else {
+                        $cleanP = mysql_real_escape_string($p);
+                        $orLike[] = "$col LIKE '%$cleanP%'";
+                    }
+                }
+                if ($mode === 'number' && !empty($arr)) return "$col IN (" . implode(',', $arr) . ")";
+                if ($mode === 'text' && !empty($orLike)) return "(" . implode(" OR ", $orLike) . ")";
+            }
+
+            $op = '';
+            $cleanVal = $val;
+
+            if ($val[0] === '>') { $op = '>'; $cleanVal = substr($val, 1); }
+            elseif ($val[0] === '<') { $op = '<'; $cleanVal = substr($val, 1); }
+            elseif ($val[0] === '!') { $op = '!'; $cleanVal = substr($val, 1); }
+
+            $cleanVal = trim($cleanVal);
+            
+            if ($mode === 'number') {
+                $cleanVal = str_replace(',', '.', $cleanVal);
+                if (!is_numeric($cleanVal)) return null; 
+                
+                if ($op === '!') return "$col <> $cleanVal";
+                if ($op === '>' || $op === '<') return "$col $op $cleanVal";
+                return "$col = $cleanVal"; 
+            }
+
+            $safeVal = mysql_real_escape_string($cleanVal);
+            if ($op === '!') return "$col NOT LIKE '%$safeVal%'";
+            if ($op === '>' || $op === '<') return "$col $op '$safeVal'"; 
+            
+            return "$col LIKE '%$safeVal%'";
+        }
+    }
+
     // [NOVO] ENVIAR PARA CORREÇÃO (D001E -> D001F)
     if (isset($_POST['action']) && $_POST['action'] === 'send_correction_mel') {
         $ids = isset($_POST['ids']) ? $_POST['ids'] : []; 
@@ -331,14 +361,15 @@ if ($isAjax) {
                 $check = mysql_query("SELECT D001F_Id FROM D001F WHERE D001F_D001_Codigo_Produto = '$sku'");
                 
                 if (mysql_num_rows($check) == 0) {
-                    $cols = "D001F_D001_Id, D001F_D001_Codigo_Produto, D001F_Titulo, D001F_Marca, D001F_Descricao, 
+                    $cols = "D001F_D001_Id, D001F_D001_Codigo_Produto, D001F_Id_Any, D001F_Sku_Titulo, D001F_Marca, D001F_Descricao, 
                              D001F_Imagem_1, D001F_Imagem_2, D001F_Imagem_3, D001F_Imagem_4, D001F_Imagem_5, 
                              D001F_Imagem_6, D001F_Imagem_7, D001F_Imagem_8, D001F_Imagem_9, D001F_Imagem_10, 
                              D001F_EAN, D001F_garantia, D001F_peso, D001F_altura, D001F_largura, D001F_comprimento, D001F_ult_att";
                              
                     $vals = "'" . mysql_real_escape_string($src['D001E_D001_Id']) . "',
                              '" . mysql_real_escape_string($src['D001E_D001_Codigo_Produto']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Titulo']) . "',
+                             '" . mysql_real_escape_string($src['D001E_Id_Any']) . "',
+                             '" . mysql_real_escape_string($src['D001E_Sku_Titulo']) . "',
                              '" . mysql_real_escape_string($src['D001E_Marca']) . "',
                              '" . mysql_real_escape_string($src['D001E_Descricao']) . "',
                              '" . mysql_real_escape_string($src['D001E_Imagem_1']) . "',
@@ -368,83 +399,49 @@ if ($isAjax) {
         exit;
     }
 
-    // [EXPORTAÇÃO CSV - D001E]
+    // [EXPORTAÇÃO CSV]
     if (isset($_POST['action']) && $_POST['action'] === 'export_csv_mel') {
-        
         $where = ["1=1"];
-        if (!empty($_POST['f_tit'])) { $ft = cleanInputMel($_POST['f_tit']); $where[] = "T1.D001E_Titulo LIKE '%$ft%'"; }
-        if (!empty($_POST['f_sku'])) { $fs = cleanInputMel($_POST['f_sku']); $where[] = "T1.D001E_D001_Codigo_Produto LIKE '%$fs%'"; }
-        if (!empty($_POST['f_mar'])) { $fm = cleanInputMel($_POST['f_mar']); $where[] = "T1.D001E_Marca LIKE '%$fm%'"; }
-        if (!empty($_POST['f_desc'])) { $fd = cleanInputMel($_POST['f_desc']); $where[] = "T1.D001E_Descricao LIKE '%$fd%'"; }
+        if (!empty($_POST['f_tit'])) { $w = getSmartWhereMel("T1.D001E_Sku_Titulo", $_POST['f_tit'], 'text'); if($w) $where[] = $w; }
+        if (!empty($_POST['f_id_any'])) { $w = getSmartWhereMel("T1.D001E_Id_Any", $_POST['f_id_any'], 'number'); if($w) $where[] = $w; }
+        if (!empty($_POST['f_sku'])) { $w = getSmartWhereMel("T1.D001E_D001_Codigo_Produto", $_POST['f_sku'], 'text'); if($w) $where[] = $w; }
+        if (!empty($_POST['f_mar'])) { $w = getSmartWhereMel("T1.D001E_Marca", $_POST['f_mar'], 'text'); if($w) $where[] = $w; }
+        if (!empty($_POST['f_desc'])) { $w = getSmartWhereMel("T1.D001E_Descricao", $_POST['f_desc'], 'text'); if($w) $where[] = $w; }
         if (!empty($_POST['f_spec'])) { $fsp = cleanInputMel($_POST['f_spec']); $where[] = "(T1.D001E_EAN LIKE '%$fsp%' OR T1.D001E_garantia LIKE '%$fsp%' OR T1.D001E_peso LIKE '%$fsp%')"; }
-
-        if (isset($_POST['f_est_liq']) && $_POST['f_est_liq'] !== '') { $val = (int)$_POST['f_est_liq']; $where[] = "T2.D009_Quantidade_Estoque_Liquido = $val"; }
-        if (isset($_POST['f_est_tab']) && $_POST['f_est_tab'] !== '') { $val = (int)$_POST['f_est_tab']; $where[] = "T2.D009_Quantidade_Estoque_Tabela = $val"; }
-        if (!empty($_POST['f_freq'])) { $val = cleanInputMel($_POST['f_freq']); $where[] = "T2.D009_Frequencia_Venda LIKE '%$val%'"; }
-        if (!empty($_POST['f_custo'])) { $val = (float)str_replace(',', '.', $_POST['f_custo']); $where[] = "T2.D009_Valor_Custo_Unitario = $val"; }
-
-        if (!empty($_POST['f_sco'])) { $v = (int)$_POST['f_sco']; if($v>0) $where[] = "T1.D001E_Status_Pontuacao = $v"; }
-        if (!empty($_POST['f_sc_tit'])) { $v = (int)$_POST['f_sc_tit']; if($v>0) $where[] = "T1.D001E_pont_titulo = $v"; }
-        if (!empty($_POST['f_sc_desc'])) { $v = (int)$_POST['f_sc_desc']; if($v>0) $where[] = "T1.D001E_pont_desc = $v"; }
-        if (!empty($_POST['f_sc_img'])) { $v = (int)$_POST['f_sc_img']; if($v>0) $where[] = "T1.D001E_pont_img = $v"; }
-        if (!empty($_POST['f_sc_spec'])) { $v = (int)$_POST['f_sc_spec']; if($v>0) $where[] = "T1.D001E_pont_espec = $v"; }
+        if (isset($_POST['f_est_liq']) && $_POST['f_est_liq'] !== '') { $w = getSmartWhereMel("T2.D009_Quantidade_Estoque_Liquido", $_POST['f_est_liq'], 'number'); if($w) $where[] = $w; }
+        if (isset($_POST['f_est_tab']) && $_POST['f_est_tab'] !== '') { $w = getSmartWhereMel("T2.D009_Quantidade_Estoque_Tabela", $_POST['f_est_tab'], 'number'); if($w) $where[] = $w; }
+        if (!empty($_POST['f_freq'])) { $w = getSmartWhereMel("T2.D009_Frequencia_Venda", $_POST['f_freq'], 'number'); if($w) $where[] = $w; }
+        if (!empty($_POST['f_custo'])) { $w = getSmartWhereMel("T2.D009_Valor_Custo_Unitario", $_POST['f_custo'], 'number'); if($w) $where[] = $w; }
+        if (!empty($_POST['f_sco'])) { $w = getSmartWhereMel("T1.D001E_Status_Pontuacao", $_POST['f_sco'], 'number'); if($w) $where[] = $w; }
+        if (!empty($_POST['f_sc_tit'])) { $w = getSmartWhereMel("T1.D001E_pont_titulo", $_POST['f_sc_tit'], 'number'); if($w) $where[] = $w; }
+        if (!empty($_POST['f_sc_desc'])) { $w = getSmartWhereMel("T1.D001E_pont_desc", $_POST['f_sc_desc'], 'number'); if($w) $where[] = $w; }
+        if (!empty($_POST['f_sc_img'])) { $w = getSmartWhereMel("T1.D001E_pont_img", $_POST['f_sc_img'], 'number'); if($w) $where[] = $w; }
+        if (!empty($_POST['f_sc_spec'])) { $w = getSmartWhereMel("T1.D001E_pont_espec", $_POST['f_sc_spec'], 'number'); if($w) $where[] = $w; }
 
         $whereStr = implode(" AND ", $where);
-
         $sqlCsv = "SELECT T1.* FROM D001E AS T1
                    LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001E_D001_Id
                    LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id)
-                   WHERE $whereStr
-                   GROUP BY T1.D001E_Id
-                   ORDER BY T1.D001E_Id ASC";
-
+                   WHERE $whereStr GROUP BY T1.D001E_Id ORDER BY T1.D001E_Id ASC";
         $rsCsv = mysql_query($sqlCsv);
-
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename=produtos_quality_'.date('YmdHis').'.csv');
-
         $out = fopen('php://output', 'w');
         fputs($out, "\xEF\xBB\xBF");
-
-        $header = [
-            'D001E_Id','D001E_D001_Id','D001E_D001_Codigo_Produto','D001E_Titulo','D001E_Marca',
-            'D001E_Descricao','D001E_Imagem_1','D001E_Imagem_2','D001E_Imagem_3','D001E_Imagem_4',
-            'D001E_Imagem_5','D001E_Imagem_6','D001E_Imagem_7','D001E_Imagem_8','D001E_Imagem_9',
-            'D001E_Imagem_10','D001E_Status_Pontuacao','D001E_EAN','D001E_garantia','D001E_peso',
-            'D001E_alturavarchar','D001E_larguravarchar','D001E_comprimentovarchar','D001E_ult_att',
-            'D001E_pont_titulo','D001E_pont_desc','D001E_pont_img','D001E_pont_espec'
-        ];
+        $header = ['D001E_Id','D001E_Id_Any','D001E_D001_Id','D001E_D001_Codigo_Produto','D001E_Sku_Titulo','D001E_Marca','D001E_Descricao','D001E_Imagem_1','D001E_Imagem_2','D001E_Imagem_3','D001E_Imagem_4','D001E_Imagem_5','D001E_Imagem_6','D001E_Imagem_7','D001E_Imagem_8','D001E_Imagem_9','D001E_Imagem_10','D001E_Status_Pontuacao','D001E_EAN','D001E_garantia','D001E_peso','D001E_alturavarchar','D001E_larguravarchar','D001E_comprimentovarchar','D001E_ult_att','D001E_pont_titulo','D001E_pont_desc','D001E_pont_img','D001E_pont_espec'];
         fputcsv($out, $header, ';');
-
-        function simpleCleanMel($str) {
-            if(is_null($str)) return '';
-            $str = str_replace(["\r\n", "\r", "\n", "\t"], ' ', $str);
-            return trim($str);
-        }
-
+        function simpleCleanMel($str) { if(is_null($str)) return ''; $str = str_replace(["\r\n", "\r", "\n", "\t"], ' ', $str); return trim($str); }
         if ($rsCsv) {
             while ($row = mysql_fetch_assoc($rsCsv)) {
                 $line = [
-                    $row['D001E_Id'],
-                    $row['D001E_D001_Id'],
-                    simpleCleanMel($row['D001E_D001_Codigo_Produto']),
-                    simpleCleanMel($row['D001E_Titulo']),
-                    simpleCleanMel($row['D001E_Marca']),
-                    simpleCleanMel($row['D001E_Descricao']),
+                    $row['D001E_Id'], $row['D001E_Id_Any'], $row['D001E_D001_Id'], simpleCleanMel($row['D001E_D001_Codigo_Produto']), simpleCleanMel($row['D001E_Sku_Titulo']),
+                    simpleCleanMel($row['D001E_Marca']), simpleCleanMel($row['D001E_Descricao']),
                     $row['D001E_Imagem_1'], $row['D001E_Imagem_2'], $row['D001E_Imagem_3'], $row['D001E_Imagem_4'], $row['D001E_Imagem_5'],
                     $row['D001E_Imagem_6'], $row['D001E_Imagem_7'], $row['D001E_Imagem_8'], $row['D001E_Imagem_9'], $row['D001E_Imagem_10'],
-                    $row['D001E_Status_Pontuacao'],
-                    simpleCleanMel($row['D001E_EAN']),
-                    simpleCleanMel($row['D001E_garantia']),
-                    simpleCleanMel($row['D001E_peso']),
-                    simpleCleanMel($row['D001E_altura']), 
-                    simpleCleanMel($row['D001E_largura']), 
-                    simpleCleanMel($row['D001E_comprimento']), 
-                    $row['D001E_ult_att'],
-                    $row['D001E_pont_titulo'],
-                    $row['D001E_pont_desc'],
-                    $row['D001E_pont_img'],
-                    $row['D001E_pont_espec']
+                    $row['D001E_Status_Pontuacao'], simpleCleanMel($row['D001E_EAN']), simpleCleanMel($row['D001E_garantia']),
+                    simpleCleanMel($row['D001E_peso']), simpleCleanMel($row['D001E_altura']), simpleCleanMel($row['D001E_largura']),
+                    simpleCleanMel($row['D001E_comprimento']), $row['D001E_ult_att'],
+                    $row['D001E_pont_titulo'], $row['D001E_pont_desc'], $row['D001E_pont_img'], $row['D001E_pont_espec']
                 ];
                 fputcsv($out, $line, ';');
             }
@@ -457,11 +454,7 @@ if ($isAjax) {
 
     if (isset($_POST['action']) && $_POST['action'] === 'get_details_mel') {
         $skuBusca = isset($_POST['sku']) ? mysql_real_escape_string($_POST['sku']) : '';
-        $sqlDet = "SELECT T1.*, 
-                          T2.D009_Frequencia_Venda, 
-                          T2.D009_Valor_Custo_Unitario, 
-                          T2.D009_Quantidade_Estoque_Tabela, 
-                          T2.D009_Quantidade_Estoque_Liquido
+        $sqlDet = "SELECT T1.*, T2.D009_Frequencia_Venda, T2.D009_Valor_Custo_Unitario, T2.D009_Quantidade_Estoque_Tabela, T2.D009_Quantidade_Estoque_Liquido
                     FROM D001E AS T1
                     LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001E_D001_Id
                     LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id)
@@ -470,10 +463,7 @@ if ($isAjax) {
         if ($rsDet && mysql_num_rows($rsDet) > 0) {
             $row = mysql_fetch_assoc($rsDet);
             $marca = isset($row['D001E_Marca']) ? $row['D001E_Marca'] : '';
-            if (empty($marca) && !empty($row['D001E_Json_Nativo'])) {
-                $marca = extrairMarcaJsonAnyMarketMel($row['D001E_Json_Nativo']);
-            }
-            $resT = analiseTituloMel($row['D001E_Titulo']);
+            $resT = analiseTituloMel($row['D001E_Sku_Titulo']);
             $resD = analiseDescricaoMel($row['D001E_Descricao']);
             $resI = analiseImagensMel($row);
             $resA = analiseAtributosMel($row);
@@ -487,7 +477,7 @@ if ($isAjax) {
                 'Largura' => $row['D001E_largura'] ? $row['D001E_largura'] . ' cm' : '',
                 'Comprimento' => $row['D001E_comprimento'] ? $row['D001E_comprimento'] . ' cm' : '',
             ];
-            echo json_encode(['ok' => 1, 'titulo' => $row['D001E_Titulo'], 'sku' => $row['D001E_D001_Codigo_Produto'], 'marca' => $marca, 'desc' => $row['D001E_Descricao'], 'imgs' => $imgs, 'specs' => $specs,
+            echo json_encode(['ok' => 1, 'titulo' => $row['D001E_Sku_Titulo'], 'sku' => $row['D001E_D001_Codigo_Produto'], 'marca' => $marca, 'desc' => $row['D001E_Descricao'], 'imgs' => $imgs, 'specs' => $specs,
                 'scores' => ['tit' => $resT['nota'], 'desc' => $resD['nota'], 'img' => $resI['nota'], 'attr' => $resA['nota']]
             ]);
         } else { echo json_encode(['ok' => 0, 'msg' => 'Produto não encontrado']); }
@@ -495,20 +485,21 @@ if ($isAjax) {
     }
 
     $where = ["1=1"];
-    if (!empty($_POST['f_tit'])) { $ft = cleanInputMel($_POST['f_tit']); $where[] = "T1.D001E_Titulo LIKE '%$ft%'"; }
-    if (!empty($_POST['f_sku'])) { $fs = cleanInputMel($_POST['f_sku']); $where[] = "T1.D001E_D001_Codigo_Produto LIKE '%$fs%'"; }
-    if (!empty($_POST['f_mar'])) { $fm = cleanInputMel($_POST['f_mar']); $where[] = "T1.D001E_Marca LIKE '%$fm%'"; }
-    if (!empty($_POST['f_desc'])) { $fd = cleanInputMel($_POST['f_desc']); $where[] = "T1.D001E_Descricao LIKE '%$fd%'"; }
+    if (!empty($_POST['f_tit'])) { $w = getSmartWhereMel("T1.D001E_Sku_Titulo", $_POST['f_tit'], 'text'); if($w) $where[] = $w; }
+    if (!empty($_POST['f_id_any'])) { $w = getSmartWhereMel("T1.D001E_Id_Any", $_POST['f_id_any'], 'number'); if($w) $where[] = $w; }
+    if (!empty($_POST['f_sku'])) { $w = getSmartWhereMel("T1.D001E_D001_Codigo_Produto", $_POST['f_sku'], 'text'); if($w) $where[] = $w; }
+    if (!empty($_POST['f_mar'])) { $w = getSmartWhereMel("T1.D001E_Marca", $_POST['f_mar'], 'text'); if($w) $where[] = $w; }
+    if (!empty($_POST['f_desc'])) { $w = getSmartWhereMel("T1.D001E_Descricao", $_POST['f_desc'], 'text'); if($w) $where[] = $w; }
     if (!empty($_POST['f_spec'])) { $fsp = cleanInputMel($_POST['f_spec']); $where[] = "(T1.D001E_EAN LIKE '%$fsp%' OR T1.D001E_garantia LIKE '%$fsp%' OR T1.D001E_peso LIKE '%$fsp%')"; }
-    if (isset($_POST['f_est_liq']) && $_POST['f_est_liq'] !== '') { $val = (int)$_POST['f_est_liq']; $where[] = "T2.D009_Quantidade_Estoque_Liquido = $val"; }
-    if (isset($_POST['f_est_tab']) && $_POST['f_est_tab'] !== '') { $val = (int)$_POST['f_est_tab']; $where[] = "T2.D009_Quantidade_Estoque_Tabela = $val"; }
-    if (!empty($_POST['f_freq'])) { $val = cleanInputMel($_POST['f_freq']); $where[] = "T2.D009_Frequencia_Venda LIKE '%$val%'"; }
-    if (!empty($_POST['f_custo'])) { $val = (float)str_replace(',', '.', $_POST['f_custo']); $where[] = "T2.D009_Valor_Custo_Unitario = $val"; }
-    if (!empty($_POST['f_sco'])) { $v = (int)$_POST['f_sco']; if($v>0) $where[] = "T1.D001E_Status_Pontuacao = $v"; }
-    if (!empty($_POST['f_sc_tit'])) { $v = (int)$_POST['f_sc_tit']; if($v>0) $where[] = "T1.D001E_pont_titulo = $v"; }
-    if (!empty($_POST['f_sc_desc'])) { $v = (int)$_POST['f_sc_desc']; if($v>0) $where[] = "T1.D001E_pont_desc = $v"; }
-    if (!empty($_POST['f_sc_img'])) { $v = (int)$_POST['f_sc_img']; if($v>0) $where[] = "T1.D001E_pont_img = $v"; }
-    if (!empty($_POST['f_sc_spec'])) { $v = (int)$_POST['f_sc_spec']; if($v>0) $where[] = "T1.D001E_pont_espec = $v"; }
+    if (isset($_POST['f_est_liq']) && $_POST['f_est_liq'] !== '') { $w = getSmartWhereMel("T2.D009_Quantidade_Estoque_Liquido", $_POST['f_est_liq'], 'number'); if($w) $where[] = $w; }
+    if (isset($_POST['f_est_tab']) && $_POST['f_est_tab'] !== '') { $w = getSmartWhereMel("T2.D009_Quantidade_Estoque_Tabela", $_POST['f_est_tab'], 'number'); if($w) $where[] = $w; }
+    if (!empty($_POST['f_freq'])) { $w = getSmartWhereMel("T2.D009_Frequencia_Venda", $_POST['f_freq'], 'number'); if($w) $where[] = $w; }
+    if (!empty($_POST['f_custo'])) { $w = getSmartWhereMel("T2.D009_Valor_Custo_Unitario", $_POST['f_custo'], 'number'); if($w) $where[] = $w; }
+    if (!empty($_POST['f_sco'])) { $w = getSmartWhereMel("T1.D001E_Status_Pontuacao", $_POST['f_sco'], 'number'); if($w) $where[] = $w; }
+    if (!empty($_POST['f_sc_tit'])) { $w = getSmartWhereMel("T1.D001E_pont_titulo", $_POST['f_sc_tit'], 'number'); if($w) $where[] = $w; }
+    if (!empty($_POST['f_sc_desc'])) { $w = getSmartWhereMel("T1.D001E_pont_desc", $_POST['f_sc_desc'], 'number'); if($w) $where[] = $w; }
+    if (!empty($_POST['f_sc_img'])) { $w = getSmartWhereMel("T1.D001E_pont_img", $_POST['f_sc_img'], 'number'); if($w) $where[] = $w; }
+    if (!empty($_POST['f_sc_spec'])) { $w = getSmartWhereMel("T1.D001E_pont_espec", $_POST['f_sc_spec'], 'number'); if($w) $where[] = $w; }
 
     $whereStr = implode(" AND ", $where);
     $totalRows = 0;
@@ -593,6 +584,12 @@ $style = <<<STYLE
     .prod-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .prod-sku { font-size: 10px; color: #4b5563; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: monospace; border: 1px solid #e5e7eb; }
     .prod-brand { font-size: 10px; font-weight: 700; color: var(--primary); white-space: nowrap; }
+    
+    /* BADGES */
+    .badge-any { font-size: 10px; color: #fff; background: #FF600F; padding: 2px 6px; border-radius: 4px; font-family: monospace; border: 1px solid #e65100; font-weight: 700; }
+    .badge-sku { font-size: 10px; color: #fff; background: #089BD4; padding: 2px 6px; border-radius: 4px; font-family: monospace; border: 1px solid #0284c7; font-weight: 700; }
+    .badge-brand { font-size: 10px; color: #374151; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; border: 1px solid #d1d5db; font-weight: 700; }
+
     .col-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; background: #f9fafb; padding: 6px 10px; border-radius: 8px; border: 1px solid #f3f4f6; }
     .metric-cell { display: flex; justify-content: space-between; align-items: center; font-size: 11px; }
     .metric-cell .lbl { color: #9ca3af; font-size: 10px; font-weight: 600; text-transform: uppercase; margin-right: 4px; }
@@ -638,7 +635,6 @@ $style = <<<STYLE
     #demoMel { padding: 20px 0; display:none; flex-wrap:wrap; align-items:center; justify-content:center; gap:5px; }
     #demoMel.active { display: flex; }
     #demoMel .pg-btn { border: 1px solid #d1d5db; background:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; color:#374151; }
-    #demoMel .pg-btn:hover { background: #f3f4f6; }
     #demoMel .pg-btn.active { background: var(--primary); border-color: var(--primary); color:#fff; }
     
     @media (max-width: 1200px) { 
@@ -665,20 +661,21 @@ echo "
     </div>
     <div class='filter-body' id='filterBodyMel'>
         <div class='f-grid'>
-            <div class='f-group'><label class='f-label'>Título</label><input type='text' id='f_tit_mel' class='f-input' placeholder='Ex: Parafusadeira'></div>
-            <div class='f-group'><label class='f-label'>SKU / Cód</label><input type='text' id='f_sku_mel' class='f-input' placeholder='Ex: 12345'></div>
-            <div class='f-group'><label class='f-label'>Marca</label><input type='text' id='f_mar_mel' class='f-input' placeholder='Ex: Makita'></div>
-            <div class='f-group'><label class='f-label'>Descrição</label><input type='text' id='f_desc_mel' class='f-input' placeholder='Contém...'></div>
+            <div class='f-group'><label class='f-label'>Título</label><input type='text' id='f_tit_mel' class='f-input' placeholder='Contém, !Não, >A'></div>
+            <div class='f-group'><label class='f-label'>ID AnyMarket</label><input type='text' id='f_id_any_mel' class='f-input' placeholder='Ex: 1234;5678'></div>
+            <div class='f-group'><label class='f-label'>SKU / Cód</label><input type='text' id='f_sku_mel' class='f-input' placeholder='Ex: 123;456 ou !111'></div>
+            <div class='f-group'><label class='f-label'>Marca</label><input type='text' id='f_mar_mel' class='f-input' placeholder='Ex: Makita;Bosch'></div>
+            <div class='f-group'><label class='f-label'>Descrição</label><input type='text' id='f_desc_mel' class='f-input' placeholder='Contém, !Não'></div>
             <div class='f-group'><label class='f-label'>Specs/EAN</label><input type='text' id='f_spec_mel' class='f-input' placeholder='Contém...'></div>
-            <div class='f-group'><label class='f-label'>Est. Líquido (=)</label><input type='number' id='f_est_liq_mel' class='f-input' placeholder='Exato'></div>
-            <div class='f-group'><label class='f-label'>Est. Tabela (=)</label><input type='number' id='f_est_tab_mel' class='f-input' placeholder='Exato'></div>
-            <div class='f-group'><label class='f-label'>Frequência</label><input type='text' id='f_freq_mel' class='f-input' placeholder='Ex: 1'></div>
-            <div class='f-group'><label class='f-label'>Custo (=)</label><input type='text' id='f_custo_mel' class='f-input' placeholder='Ex: 10,90'></div>
-            <div class='f-group'><label class='f-label'>Nota Geral</label><select id='f_sco_mel' class='f-input'><option value='0'>Todas</option><option value='6'>6 - Ótima</option><option value='5'>5 - M.Boa</option><option value='4'>4 - Boa</option><option value='3'>3 - Média</option><option value='2'>2 - Ruim</option><option value='1'>1 - M.Ruim</option></select></div>
-            <div class='f-group'><label class='f-label'>Nota Título</label><select id='f_sc_tit_mel' class='f-input'><option value='0'>Todas</option><option value='1'>1</option><option value='2'>2</option><option value='3'>3</option><option value='4'>4</option><option value='5'>5</option></select></div>
-            <div class='f-group'><label class='f-label'>Nota Desc</label><select id='f_sc_desc_mel' class='f-input'><option value='0'>Todas</option><option value='1'>1</option><option value='2'>2</option><option value='3'>3</option><option value='4'>4</option><option value='5'>5</option></select></div>
-            <div class='f-group'><label class='f-label'>Nota Img</label><select id='f_sc_img_mel' class='f-input'><option value='0'>Todas</option><option value='1'>1</option><option value='3'>3</option><option value='4'>4</option><option value='5'>5</option></select></div>
-            <div class='f-group'><label class='f-label'>Nota Spec</label><select id='f_sc_spec_mel' class='f-input'><option value='0'>Todas</option><option value='1'>1</option><option value='3'>3</option><option value='4'>4</option><option value='5'>5</option></select></div>
+            <div class='f-group'><label class='f-label'>Est. Líquido (=, <, >)</label><input type='text' id='f_est_liq_mel' class='f-input' placeholder='Ex: >10'></div>
+            <div class='f-group'><label class='f-label'>Est. Tabela (=, <, >)</label><input type='text' id='f_est_tab_mel' class='f-input' placeholder='Ex: !0'></div>
+            <div class='f-group'><label class='f-label'>Frequência</label><input type='text' id='f_freq_mel' class='f-input' placeholder='Ex: >1'></div>
+            <div class='f-group'><label class='f-label'>Custo (=, <, >)</label><input type='text' id='f_custo_mel' class='f-input' placeholder='Ex: >100,00'></div>
+            <div class='f-group'><label class='f-label'>Nota Geral</label><input type='text' id='f_sco_mel' class='f-input' placeholder='Ex: 5;6 ou >3'></div>
+            <div class='f-group'><label class='f-label'>Nota Título</label><input type='text' id='f_sc_tit_mel' class='f-input' placeholder='Ex: <3'></div>
+            <div class='f-group'><label class='f-label'>Nota Desc</label><input type='text' id='f_sc_desc_mel' class='f-input' placeholder='Ex: 1;2'></div>
+            <div class='f-group'><label class='f-label'>Nota Img</label><input type='text' id='f_sc_img_mel' class='f-input' placeholder='Ex: 5'></div>
+            <div class='f-group'><label class='f-label'>Nota Spec</label><input type='text' id='f_sc_spec_mel' class='f-input' placeholder='Ex: !1'></div>
         </div>
         <div class='f-actions'>
             <button class='f-btn-apply' onclick='applyFiltersMel()'><i class='material-icons'>search</i> Aplicar Filtros</button>
@@ -701,7 +698,7 @@ echo "<div class='quality-header-mel'>
         <div>Ações</div>
       </div>";
 
-echo "<div id='contentMel'><div class='start-msg'><i class='material-icons'>tune</i><h2>Comece sua análise</h2><p>Utilize os filtros acima para buscar os produtos.</p></div></div>";
+echo "<div id='contentMel'><div class='start-msg' style='text-align:center; padding:50px; color:#9ca3af;'><i class='material-icons' style='font-size:48px; margin-bottom:10px; display:block;'>search</i><h2 style='font-size:18px; margin:0;'>Comece sua análise</h2><p>Utilize os filtros acima para carregar os produtos.</p></div></div>";
 
 $ajaxUrl  = isset($_SERVER['REQUEST_URI']) ? htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES, 'UTF-8') : '';
 $sysDivId = isset($g['divId']) ? $g['divId'] : 'contentMel';
@@ -765,6 +762,7 @@ echo "<div id='demoMel'></div></div>";
             // MAP: ID _mel -> $_POST['f_...']
             return {
                 f_tit: jQuery('#f_tit_mel').val(),
+                f_id_any: jQuery('#f_id_any_mel').val(),
                 f_sku: jQuery('#f_sku_mel').val(),
                 f_mar: jQuery('#f_mar_mel').val(),
                 f_desc: jQuery('#f_desc_mel').val(),
@@ -871,7 +869,7 @@ echo "<div id='demoMel'></div></div>";
         var sysIdVal = document.getElementById('sys_base_divId_mel').value;
         if (sysIdVal && typeof jQuery !== 'undefined' && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
         
-        jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'get_details_mel', sku: sku }, success: function (res) { if (res.ok) { vTitleMel.innerText = res.titulo; vSkuMel.innerText = res.sku; vBrandMel.innerText = res.marca; vDescMel.innerHTML = res.desc ? res.desc : '<em>Sem descrição.</em>'; const mT = getMetaNotaMel(res.scores.tit); elTSMel.style.backgroundColor = mT.c; elTSMel.innerText = res.scores.tit + ' - ' + mT.t; const mD = getMetaNotaMel(res.scores.desc); elDSMel.style.backgroundColor = mD.c; elDSMel.innerText = res.scores.desc + ' - ' + mD.t; const mI = getMetaNotaMel(res.scores.img); elISMel.style.backgroundColor = mI.c; elISMel.innerText = 'Fotos: ' + res.scores.img + ' (' + mI.t + ')'; const mA = getMetaNotaMel(res.scores.attr); elASMel.style.backgroundColor = mA.c; elASMel.innerText = res.scores.attr + ' - ' + mA.t; vThumbsMel.innerHTML = ''; if (res.imgs.length > 0) vHeroMel.src = res.imgs[0]; res.imgs.forEach((url, idx) => { let img = document.createElement('img'); img.src = url; img.className = 'vis-mini'; if (idx === 0) img.classList.add('active'); img.onclick = () => { vHeroMel.src = url; document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active')); img.classList.add('active'); }; vThumbsMel.appendChild(img); }); let h = '<table class="vis-specs-table">'; let has = false; if (res.specs.EAN) { h += `<tr><td><strong>EAN:</strong> ${res.specs.EAN}</td></tr>`; has = true; } if (res.specs.Garantia) { h += `<tr><td><strong>Garantia:</strong> ${res.specs.Garantia}</td></tr>`; has = true; } if (res.specs.Peso) { h += `<tr><td><strong>Peso:</strong> ${res.specs.Peso}</td></tr>`; has = true; } if (res.specs.Altura) { h += `<tr><td><strong>Altura:</strong> ${res.specs.Altura}</td></tr>`; has = true; } if (res.specs.Largura) { h += `<tr><td><strong>Largura:</strong> ${res.specs.Largura}</td></tr>`; has = true; } if (res.specs.Comprimento) { h += `<tr><td><strong>Comp.:</strong> ${res.specs.Comprimento}</td></tr>`; has = true; } h += '</table>'; vSpecsMel.innerHTML = has ? h : '<div style="color:#999;font-size:12px">Vazio</div>'; mVisMel.style.display = 'flex'; } else { alert(res.msg || 'Erro ao carregar'); } }, error: function () { alert('Erro na comunicação'); }, complete: function () { if (sysIdVal && typeof jQuery !== 'undefined' && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); } });
+        jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'get_details_mel', sku: sku }, success: function (res) { if (res.ok) { vTitleMel.innerText = res.titulo; vSkuMel.innerText = res.sku; vBrandMel.innerText = res.marca; vDescMel.innerHTML = res.desc ? res.desc : '<em>Sem descrição.</em>'; const mT = getMetaNotaMel(res.scores.tit); elTSMel.style.backgroundColor = mT.c; elTSMel.innerText = res.scores.tit + ' - ' + mT.t; const mD = getMetaNotaMel(res.scores.desc); elDSMel.style.backgroundColor = mD.c; elDSMel.innerText = res.scores.desc + ' - ' + mD.t; const mI = getMetaNotaMel(res.scores.img); elISMel.style.backgroundColor = mI.c; elISMel.innerText = 'Fotos: ' + res.scores.img + ' (' + mI.t + ')'; const mA = getMetaNotaMel(res.scores.attr); elASMel.style.backgroundColor = mA.c; elASMel.innerText = res.scores.attr + ' - ' + mA.t; vThumbsMel.innerHTML = ''; if (res.imgs.length > 0) vHeroMel.src = res.imgs[0]; res.imgs.forEach((url, idx) => { let img = document.createElement('img'); img.src = url; img.className = 'vis-mini'; if (idx === 0) img.classList.add('active'); img.onclick = () => { vHeroMel.src = url; document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active')); img.classList.add('active'); }; vThumbsMel.appendChild(img); }); let h = '<table class="vis-specs-table">'; let has = false; if (res.specs.EAN) { h += `<tr><td><strong>EAN:</strong> ${res.specs.EAN}</td></tr>`; has = true; } if (res.specs.Garantia) { h += `<tr><td><strong>Garantia:</strong> ${res.specs.Garantia}</td></tr>`; has = true; } if (res.specs.Peso) { h += `<tr><td><strong>Peso:</strong> ${res.specs.Peso}</td></tr>`; has = true; } if (res.specs.Altura) { h += `<tr><td><strong>Altura:</strong> ${res.specs.Altura}</td></tr>`; has = true; } if (res.specs.Largura) { h += `<tr><td><strong>Largura:</strong> ${res.specs.Largura}</td></tr>`; has = true; } if (res.specs.Comprimento) { h += `<tr><td><strong>Comp.:</strong> ${res.specs.Comprimento}</td></tr>`; has = true; } h += '</table>'; vSpecsMel.innerHTML = has ? h : '<div style="color:#999;font-size:12px">Vazio</div>'; mVisMel.style.display = 'flex'; } else { alert(res.msg || 'Erro ao carregar'); } }, error: function () { alert('Erro na comunicação'); }, complete: function () { if (sysId && typeof jQuery !== 'undefined' && jQuery('#' + sysId).length) jQuery('#' + sysId).hideLoading(); } });
     }
     function fecharVisMel() { mVisMel.style.display = 'none'; }
     function imprimirConteudoModalMel() { const f = document.createElement('iframe'); f.style.display = 'none'; document.body.appendChild(f); const d = f.contentWindow.document; const s = vSpecsMel.innerHTML; const c = `<html><head><style>body{font-family:Arial,sans-serif;padding:20px;color:#333}h1{font-size:24px;margin-bottom:5px}.meta{color:#666;font-size:12px;margin-bottom:20px;border-bottom:1px solid #ccc;padding-bottom:10px}.hero{text-align:center;margin-bottom:20px}.hero img{max-width:300px;max-height:300px}.desc{font-size:12px;line-height:1.5;margin-bottom:20px; text-align:justify;}.specs-box{border:1px solid #eee;padding:10px;border-radius:5px}.specs-box table{width:100%;font-size:12px}.specs-box td{padding:4px 0}</style></head><body><h1>${vTitleMel.innerText}</h1><div class="meta">SKU: ${vSkuMel.innerText} | ${vBrandMel.innerText}</div><div class="hero"><img src="${vHeroMel.src}"></div><h3>Descrição</h3><div class="desc">${vDescMel.innerHTML}</div><h3>Specs</h3><div class="specs-box">${s}</div></body></html>`; d.open(); d.write(c); d.close(); setTimeout(() => { f.contentWindow.print(); setTimeout(() => document.body.removeChild(f), 1000); }, 200); }

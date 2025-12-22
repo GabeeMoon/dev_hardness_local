@@ -124,22 +124,87 @@ if ($isAjax) {
         }
     }
 
+    // --- FUNÇÃO MASTER DE FILTROS INTELIGENTES (TEXTO E NÚMERO) ---
+    // Renomeada para COR para evitar conflito
+    if (!function_exists('getSmartWhereCor')) {
+        function getSmartWhereCor($col, $val, $mode = 'text') {
+            // $mode: 'text' (usa LIKE/NOT LIKE) ou 'number' (usa = / <>)
+            $val = trim($val);
+            if ($val === '') return null;
+
+            // 1. Verifica Multi-valor (;) -> IN ou OR LIKE
+            if (strpos($val, ';') !== false) {
+                $parts = explode(';', $val);
+                $arr = [];
+                $orLike = [];
+                foreach($parts as $p) {
+                    $p = trim($p);
+                    if($p === '') continue;
+                    if ($mode === 'number') {
+                        $p = str_replace(',', '.', $p); 
+                        if(is_numeric($p)) $arr[] = $p;
+                    } else {
+                        $cleanP = mysql_real_escape_string($p);
+                        $orLike[] = "$col LIKE '%$cleanP%'";
+                    }
+                }
+                if ($mode === 'number' && !empty($arr)) return "$col IN (" . implode(',', $arr) . ")";
+                if ($mode === 'text' && !empty($orLike)) return "(" . implode(" OR ", $orLike) . ")";
+            }
+
+            // 2. Operadores Unários
+            $op = '';
+            $cleanVal = $val;
+
+            if ($val[0] === '>') { $op = '>'; $cleanVal = substr($val, 1); }
+            elseif ($val[0] === '<') { $op = '<'; $cleanVal = substr($val, 1); }
+            elseif ($val[0] === '!') { $op = '!'; $cleanVal = substr($val, 1); }
+
+            $cleanVal = trim($cleanVal);
+            
+            // Tratamento Numérico
+            if ($mode === 'number') {
+                $cleanVal = str_replace(',', '.', $cleanVal);
+                if (!is_numeric($cleanVal)) return null; 
+                
+                if ($op === '!') return "$col <> $cleanVal";
+                if ($op === '>' || $op === '<') return "$col $op $cleanVal";
+                return "$col = $cleanVal"; // Padrão exato para números
+            }
+
+            // Tratamento Texto
+            $safeVal = mysql_real_escape_string($cleanVal);
+            if ($op === '!') return "$col NOT LIKE '%$safeVal%'";
+            if ($op === '>' || $op === '<') return "$col $op '$safeVal'"; // Útil para datas ou alfabético
+            
+            // Padrão Texto (LIKE)
+            return "$col LIKE '%$safeVal%'";
+        }
+    }
+
     // Função de filtro exclusiva para CORREÇÃO
     if (!function_exists('buildWhereCor')) {
         function buildWhereCor($postData) {
             $where = ["1=1"];
             
-            // Note que recebemos 'f_tit' do JS, mas validamos aqui
-            if (!empty($postData['f_tit'])) { $ft = cleanInputCor($postData['f_tit']); $where[] = "T1.D001F_Titulo LIKE '%$ft%'"; }
-            if (!empty($postData['f_sku'])) { $fs = cleanInputCor($postData['f_sku']); $where[] = "T1.D001F_D001_Codigo_Produto LIKE '%$fs%'"; }
-            if (!empty($postData['f_mar'])) { $fm = cleanInputCor($postData['f_mar']); $where[] = "T1.D001F_Marca LIKE '%$fm%'"; }
-            if (!empty($postData['f_desc'])) { $fd = cleanInputCor($postData['f_desc']); $where[] = "T1.D001F_Descricao LIKE '%$fd%'"; }
-            if (!empty($postData['f_spec'])) { $fsp = cleanInputCor($postData['f_spec']); $where[] = "(T1.D001F_EAN LIKE '%$fsp%' OR T1.D001F_garantia LIKE '%$fsp%' OR T1.D001F_peso LIKE '%$fsp%')"; }
+            // Texto (usa 'text')
+            if (!empty($postData['f_tit'])) { $w = getSmartWhereCor("T1.D001F_Titulo", $postData['f_tit'], 'text'); if($w) $where[] = $w; }
+            if (!empty($postData['f_sku'])) { $w = getSmartWhereCor("T1.D001F_D001_Codigo_Produto", $postData['f_sku'], 'text'); if($w) $where[] = $w; }
+            if (!empty($postData['f_mar'])) { $w = getSmartWhereCor("T1.D001F_Marca", $postData['f_mar'], 'text'); if($w) $where[] = $w; }
+            if (!empty($postData['f_desc'])) { $w = getSmartWhereCor("T1.D001F_Descricao", $postData['f_desc'], 'text'); if($w) $where[] = $w; }
+            
+            // Specs (Manual devido ao OR em multiplas colunas)
+            if (!empty($postData['f_spec'])) { 
+                $fsp = cleanInputCor($postData['f_spec']); 
+                $where[] = "(T1.D001F_EAN LIKE '%$fsp%' OR T1.D001F_garantia LIKE '%$fsp%' OR T1.D001F_peso LIKE '%$fsp%')"; 
+            }
 
-            if (isset($postData['f_est_liq']) && $postData['f_est_liq'] !== '') { $val = (int)$postData['f_est_liq']; $where[] = "T2.D009_Quantidade_Estoque_Liquido = $val"; }
-            if (isset($postData['f_est_tab']) && $postData['f_est_tab'] !== '') { $val = (int)$postData['f_est_tab']; $where[] = "T2.D009_Quantidade_Estoque_Tabela = $val"; }
-            if (!empty($postData['f_freq'])) { $val = cleanInputCor($postData['f_freq']); $where[] = "T2.D009_Frequencia_Venda LIKE '%$val%'"; }
-            if (!empty($postData['f_custo'])) { $val = (float)str_replace(',', '.', $postData['f_custo']); $where[] = "T2.D009_Valor_Custo_Unitario = $val"; }
+            // Numéricos (usa 'number')
+            if (isset($postData['f_est_liq']) && $postData['f_est_liq'] !== '') { $w = getSmartWhereCor("T2.D009_Quantidade_Estoque_Liquido", $postData['f_est_liq'], 'number'); if($w) $where[] = $w; }
+            if (isset($postData['f_est_tab']) && $postData['f_est_tab'] !== '') { $w = getSmartWhereCor("T2.D009_Quantidade_Estoque_Tabela", $postData['f_est_tab'], 'number'); if($w) $where[] = $w; }
+            
+            if (!empty($postData['f_freq'])) { $w = getSmartWhereCor("T2.D009_Frequencia_Venda", $postData['f_freq'], 'number'); if($w) $where[] = $w; }
+            if (!empty($postData['f_custo'])) { $w = getSmartWhereCor("T2.D009_Valor_Custo_Unitario", $postData['f_custo'], 'number'); if($w) $where[] = $w; }
 
             return implode(" AND ", $where);
         }
@@ -467,14 +532,14 @@ echo "
     <div class='filter-body' id='filterBodyCor'>
         <div class='f-grid'>
             <div class='f-group'><label class='f-label'>Título</label><input type='text' id='cor_tit' class='f-input' placeholder='Ex: Parafusadeira'></div>
-            <div class='f-group'><label class='f-label'>SKU / Cód</label><input type='text' id='cor_sku' class='f-input' placeholder='Ex: 12345'></div>
+            <div class='f-group'><label class='f-label'>SKU / Cód</label><input type='text' id='cor_sku' class='f-input' placeholder='Ex: 12345; 67890 ou !111'></div>
             <div class='f-group'><label class='f-label'>Marca</label><input type='text' id='cor_mar' class='f-input' placeholder='Ex: Bosch'></div>
             <div class='f-group'><label class='f-label'>Descrição</label><input type='text' id='cor_desc' class='f-input' placeholder='Contém...'></div>
             <div class='f-group'><label class='f-label'>Specs/EAN</label><input type='text' id='cor_spec' class='f-input' placeholder='Contém...'></div>
-            <div class='f-group'><label class='f-label'>Est. Líquido (=)</label><input type='number' id='cor_est_liq' class='f-input' placeholder='Exato'></div>
-            <div class='f-group'><label class='f-label'>Est. Tabela (=)</label><input type='number' id='cor_est_tab' class='f-input' placeholder='Exato'></div>
-            <div class='f-group'><label class='f-label'>Frequência</label><input type='text' id='cor_freq' class='f-input' placeholder='Ex: A'></div>
-            <div class='f-group'><label class='f-label'>Custo (=)</label><input type='text' id='cor_custo' class='f-input' placeholder='Ex: 10,90'></div>
+            <div class='f-group'><label class='f-label'>Est. Líquido (=, <, >)</label><input type='text' id='cor_est_liq' class='f-input' placeholder='Ex: >10'></div>
+            <div class='f-group'><label class='f-label'>Est. Tabela (=, <, >)</label><input type='text' id='cor_est_tab' class='f-input' placeholder='Ex: !0'></div>
+            <div class='f-group'><label class='f-label'>Frequência</label><input type='text' id='cor_freq' class='f-input' placeholder='Ex: >1'></div>
+            <div class='f-group'><label class='f-label'>Custo (=, <, >)</label><input type='text' id='cor_custo' class='f-input' placeholder='Ex: >10,90'></div>
         </div>
         <div class='f-actions'>
             <button class='f-btn-apply' onclick='applyFiltersCor()'><i class='material-icons'>search</i> Aplicar Filtros</button>
