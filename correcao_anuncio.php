@@ -77,6 +77,7 @@ function renderCorrectionRowIsolado($row) {
     $skuRaw    = $row['D001F_D001_Codigo_Produto'];
     $sku       = htmlspecialchars($skuRaw, ENT_QUOTES);
     $descRaw   = $row['D001F_Descricao'];
+    $obsRaw    = $row['D001F_Obs'];
     $marcaHtml = htmlspecialchars($marca, ENT_QUOTES);
     $idAny     = !empty($row['D001F_Id_Any']) ? $row['D001F_Id_Any'] : 'ND';
 
@@ -145,6 +146,8 @@ function renderCorrectionRowIsolado($row) {
                 <span class='badge-brand' title='$marcaHtml'>Marca: $marcaHtml</span>
             </div>
         </div>
+
+        <div class='col-box-scroll content-desc'>" . ($obsRaw ?: '<em>Sem observação</em>') . "</div>
         
         <div class='col-metrics'>
             <div class='metric-item' title='Frequência de Venda'><span class='m-lbl'>FREQ</span> <span class='m-val'>$freqVenda</span></div>
@@ -592,7 +595,7 @@ $style = <<<STYLE
     .f-btn-clear { background: #ef4444; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:8px; transition: all 0.2s; shadow: var(--shadow-sm); }
     .f-btn-clear:hover { background: #dc2626; transform: translateY(-1px); }
 
-    .quality-header, .quality-row { display: grid; grid-template-columns: 90px 70px 1.5fr 1fr 1.2fr 1fr 100px; gap: 12px; align-items: center; }
+    .quality-header, .quality-row { display: grid; grid-template-columns: 90px 70px 1.5fr 1fr 1fr 1.2fr 1fr 100px; gap: 12px; align-items: center; }
     .quality-header { position: sticky; top: 0; z-index: 100; padding: 12px 16px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; background: #F3F4F6; border-bottom: 2px solid #e5e7eb; margin-bottom: 5px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); align-items:center; }
     .quality-header > div { text-align: center; } .quality-header > div:nth-child(3) { text-align: left; }
     .quality-row { background: var(--bg-card); border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; border: 1px solid var(--border); transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: var(--shadow-sm); min-height:85px; height:auto !important; }
@@ -744,7 +747,7 @@ $style = <<<STYLE
     .close-modal { font-size: 24px; cursor: pointer; transition: 0.2s; color: #9ca3af; display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%; } 
     .close-modal:hover { color: #1f2937; background:#f3f4f6; }
     
-    @media (max-width: 1400px) { .quality-header, .quality-row { grid-template-columns: 90px 70px 1.2fr 1fr 1.2fr 1fr 100px; gap: 8px; } }
+    @media (max-width: 1400px) { .quality-header, .quality-row { grid-template-columns: 90px 70px 1.2fr 1fr 1fr 1.2fr 1fr 100px; gap: 8px; } }
     @media (max-width: 1200px) { 
         .quality-header { display: none; }
         .quality-row { grid-template-columns: 70px 1fr 1fr; grid-template-areas: "thumb info info" "thumb metrics metrics" "desc desc desc" "spec spec spec" "action action action"; gap: 10px; height: auto !important; }
@@ -815,7 +818,7 @@ echo "
 </div>";
 
 echo "<div class='quality-list'>";
-echo "<div class='quality-header'><div>Tipo</div><div>Foto</div><div>Produto / Marca</div><div>Métricas</div><div>Descrição</div><div>Especificações</div><div class='center'>Ação</div></div>";
+echo "<div class='quality-header'><div>Tipo</div><div>Foto</div><div>Produto / Marca</div><div>Obs</div><div>Métricas</div><div>Descrição</div><div>Especificações</div><div class='center'>Ação</div></div>";
 echo "<div id='contentCor'><div class='start-msg' style='text-align:center; padding:50px; color:#9ca3af;'><i class='material-icons' style='font-size:48px; margin-bottom:10px; display:block;'>search</i><h2 style='font-size:18px; margin:0;'>Comece sua análise</h2><p>Utilize os filtros acima para carregar os produtos.</p></div></div>";
 
 $ajaxUrl  = isset($_SERVER['REQUEST_URI']) ? htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES, 'UTF-8') : '';

@@ -31,21 +31,6 @@ $offset = ($page - 1) * $limit;
 $isAjax  = (isset($_POST['ajax']) && (int) $_POST['ajax'] === 1);
 $apiMode = 0;
 
-/* // INDICADOR VISUAL (Azul)
-if (!$isAjax) {
-    echo "<div style='
-            position: fixed; bottom: 20px; right: 20px;
-            background: #ffffff; color: #1f2937;
-            padding: 10px 16px; border-radius: 50px;
-            font-size: 12px; font-family: -apple-system, sans-serif; font-weight: 600;
-            z-index: 999998; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            border: 1px solid #f3f4f6; pointer-events: none; display:flex; align-items:center; gap:8px;
-          '>
-            <span style='background:#0098D3; width:8px; height:8px; border-radius:50%; display:inline-block;'></span>
-            <span>Melhoria Anúncio: <strong style='color: #111827;'>ID {$C004_Id}</strong></span>
-          </div>";
-} */
-
 // =============================================================================
 // [FUNC] FUNÇÕES DE CÁLCULO (SCORE) - COM SUFIXO _MEL
 // =============================================================================
@@ -203,10 +188,10 @@ function renderQualityRowMel($row) {
     $idAny     = !empty($row['D001E_Id_Any']) ? $row['D001E_Id_Any'] : 'ND';
 
     $specHtml = "";
-    if (!empty($row['D001E_EAN'])) $specHtml .= "<span><b>EAN:</b> {$row['D001E_EAN']}</span>";
-    if (!empty($row['D001E_garantia'])) $specHtml .= "<span><b>Gar:</b> {$row['D001E_garantia']}</span>";
-    if (!empty($row['D001E_peso'])) $specHtml .= "<span><b>Peso:</b> {$row['D001E_peso']}</span>";
-    if (!empty($row['D001E_altura'])) $specHtml .= "<span><b>Dim:</b> " . ($row['D001E_altura'] ?: 0) . "x" . ($row['D001E_largura'] ?: 0) . "x" . ($row['D001E_comprimento'] ?: 0) . "</span>";
+    if (!empty($row['D001E_EAN'])) $specHtml .= "<b>EAN:</b> {$row['D001E_EAN']}<br>";
+    if (!empty($row['D001E_garantia'])) $specHtml .= "<b>Gar:</b> {$row['D001E_garantia']}<br>";
+    if (!empty($row['D001E_peso'])) $specHtml .= "<b>Peso:</b> {$row['D001E_peso']}<br>";
+    if (!empty($row['D001E_altura'])) $specHtml .= "<b>Dim:</b> " . ($row['D001E_altura'] ?: 0) . "x" . ($row['D001E_largura'] ?: 0) . "x" . ($row['D001E_comprimento'] ?: 0);
     if (empty($specHtml)) $specHtml = "<span style='color:#bbb'>Vazio</span>";
 
     // --- DADOS D009 ---
@@ -219,6 +204,10 @@ function renderQualityRowMel($row) {
     $estTabHtml = ($estTab > 0) ? $estTab : "<b>0</b>";
     $estLiqHtml = ($estLiq > 0) ? $estLiq : "<b>0</b>";
 
+    $d001Id    = $row['D001E_D001_Id'];
+
+    $jsForn = "abrirJanela(false, '{$gDivRoot}', '{$gDivId}', unique(), '', 'Anuncio', '/cad/cad002/content/form2/', '&acaoId=' + encodeURIComponent('{$d001Id}'), [700,400]); return false;";
+
     return "
     <div class='quality-row-mel'>
         <div class='col-check'>
@@ -228,12 +217,11 @@ function renderQualityRowMel($row) {
         <div class='thumb-box' onclick='abrirVisualizadorMel(\"$sku\")'>
             <img src='$imgCapa'>
         </div>
-        
         <div class='col-info'>
             <div class='prod-title'>{$row['D001E_Sku_Titulo']}</div>
             <div class='prod-sub'>
-                <span class='badge-any' title='ID AnyMarket'>Id Any: $idAny</span>
-                <span class='badge-sku'>Sku: $sku</span>
+                <span class='badge-any' title='ID AnyMarket' style='cursor:pointer' onclick='window.open(\"https://app.anymarket.com.br/app-js/products/edit/$idAny\", \"_blank\"); event.stopPropagation();'>Id Any: $idAny</span>
+                <span class='badge-sku' title='SKU Produto' href='#' onclick=\"{$jsForn}\"'>Sku: $sku</span>
                 <span class='badge-brand' title='$marcaHtml'>Marca: $marcaHtml</span>
             </div>
         </div>
@@ -350,6 +338,10 @@ if ($isAjax) {
         if (isset($_POST['tipo']) && in_array($_POST['tipo'], ['mod', 'corr'])) {
             $tipo = $_POST['tipo'];
         }
+
+        // [NOVO] Captura Obs e Tags
+        $obs = isset($_POST['obs']) ? mysql_real_escape_string($_POST['obs']) : '';
+        $tags = isset($_POST['tags']) ? mysql_real_escape_string($_POST['tags']) : '';
         
         $count = 0;
         foreach ($ids as $idE) {
@@ -368,7 +360,7 @@ if ($isAjax) {
                     $cols = "D001F_D001_Id, D001F_D001_Codigo_Produto, D001F_Id_Any, D001F_Titulo, D001F_Marca, D001F_Descricao, 
                              D001F_Imagem_1, D001F_Imagem_2, D001F_Imagem_3, D001F_Imagem_4, D001F_Imagem_5, 
                              D001F_Imagem_6, D001F_Imagem_7, D001F_Imagem_8, D001F_Imagem_9, D001F_Imagem_10, 
-                             D001F_EAN, D001F_garantia, D001F_peso, D001F_altura, D001F_largura, D001F_comprimento, D001F_ult_att, D001F_Tipo";
+                             D001F_EAN, D001F_garantia, D001F_peso, D001F_altura, D001F_largura, D001F_comprimento, D001F_ult_att, D001F_Tipo, D001F_Obs, D001F_tags";
                              
                     $vals = "'" . mysql_real_escape_string($src['D001E_D001_Id']) . "',
                              '" . mysql_real_escape_string($src['D001E_D001_Codigo_Produto']) . "',
@@ -393,10 +385,13 @@ if ($isAjax) {
                              '" . mysql_real_escape_string($src['D001E_largura']) . "',
                              '" . mysql_real_escape_string($src['D001E_comprimento']) . "',
                              NOW(),
-                             '$tipo'";
+                             '$tipo',
+                             '$obs',
+                             '$tags'";
                              
-                    mysql_query("INSERT INTO D001F ($cols) VALUES ($vals)");
-                    $count++;
+                    if(mysql_query("INSERT INTO D001F ($cols) VALUES ($vals)")) {
+                        $count++;
+                    }
                 }
             }
         }
@@ -693,6 +688,28 @@ $style = <<<STYLE
     .btn-sel-type:hover { border-color: var(--primary); background: #f0f9ff; color: var(--primary); transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
     .btn-sel-type i { font-size: 32px; color: #9ca3af; transition: color 0.2s; }
     .btn-sel-type:hover i { color: var(--primary); }
+
+    /* [NOVO] MODAL OBS CORREÇÃO - MODERNIZADO */
+    .obs-wrapper { width:100%; display:flex; flex-direction:column; gap:15px; position: relative; }
+    .obs-input { 
+        width:100%; min-height:150px; max-height: 150px; overflow-y: auto; 
+        border:1px solid #d1d5db; border-radius:12px; padding:15px; font-size:14px; color:#374151; 
+        outline:none; transition:0.2s; font-family:inherit; background:#fff; line-height:1.5;
+    }
+    .obs-input:focus { border-color:var(--primary); box-shadow:0 0 0 4px rgba(0,152,211,0.1); }
+    .obs-input:empty:before { content: attr(data-placeholder); color: #9ca3af; font-style: italic; }
+    
+    .char-counter { 
+        position: absolute; bottom: 10px; right: 15px; font-size: 11px; font-weight: 800; 
+        background: rgba(255,255,255,0.9); padding: 2px 6px; border-radius: 4px;
+    }
+    .char-green { color: #10b981; }
+    .char-red { color: #ef4444; }
+
+    .tag-grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+    .tag-check-item { display:flex; align-items:center; gap:8px; font-size:13px; color:#374151; cursor:pointer; padding:8px 10px; border:1px solid #e5e7eb; border-radius:6px; transition:0.1s; }
+    .tag-check-item:hover { background:#f9fafb; border-color:#d1d5db; }
+    .tag-check-item input { width:16px; height:16px; cursor:pointer; accent-color:var(--primary); }
 </style>
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 STYLE;
@@ -782,6 +799,40 @@ echo "<div id='demoMel'></div></div>";
     </div>
 </div>
 
+<div id="modalObsCorrecaoMel" class="modal-overlay">
+    <div class="modal-content" style="max-width: 500px; height: auto; flex-direction: column; padding: 25px; gap: 15px; border-radius:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e5e7eb; padding-bottom:10px;">
+             <h2 style="font-size:16px; font-weight:700; color:#111827; margin:0;">Detalhes da Correção</h2>
+             <span class="close-modal" onclick="cancelarEnvioMel()">×</span>
+        </div>
+        
+        <div class="obs-wrapper">
+             <div>
+                <label style="font-size:12px; font-weight:600; color:#374151; margin-bottom:8px; display:block;">Tags (Motivo)</label>
+                <div class="tag-grid">
+                    <label class="tag-check-item"><input type="checkbox" class="chk-tag-obs" value="1"> Imagem</label>
+                    <label class="tag-check-item"><input type="checkbox" class="chk-tag-obs" value="2"> Título</label>
+                    <label class="tag-check-item"><input type="checkbox" class="chk-tag-obs" value="3"> Descrição</label>
+                    <label class="tag-check-item"><input type="checkbox" class="chk-tag-obs" value="4"> Pesos e Dim.</label>
+                    <label class="tag-check-item"><input type="checkbox" class="chk-tag-obs" value="5"> Match</label>
+                    <label class="tag-check-item"><input type="checkbox" class="chk-tag-obs" value="6"> Voltagem</label>
+                    <label class="tag-check-item"><input type="checkbox" class="chk-tag-obs" value="7"> Cor</label>
+                </div>
+             </div>
+             <div style="position:relative">
+                <label style="font-size:12px; font-weight:600; color:#374151; margin-bottom:8px; display:block;">Observação</label>
+                <div id="txtObsCorrecao" class="obs-input" contenteditable="true" data-placeholder="Escreva aqui detalhes sobre o problema..." oninput="updateCharCounterMel(this)"></div>
+                <div class="char-counter char-green" id="charCounterMel">0 / 500</div>
+             </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:10px;">
+             <button class="f-btn-export" onclick="cancelarEnvioMel()" style="border:1px solid #d1d5db; color:#374151;">Cancelar</button>
+             <button class="f-btn-send" onclick="finalizarEnvioCorrecao()">Confirmar Envio</button>
+        </div>
+    </div>
+</div>
+
 <div id="modalVisMel" class="modal-overlay" onclick="if(event.target==this) fecharVisMel()">
     <div class="modal-content printable-area">
         <span class="close-modal" onclick="fecharVisMel()">×</span>
@@ -790,7 +841,6 @@ echo "<div id='demoMel'></div></div>";
         <div class="vis-info">
             <h1 class="vis-h1"><span id="visTitleMel">--</span><span class="vis-chip" id="visTitleScoreMel">--</span></h1>
             <div class="vis-meta">SKU: <strong id="visSkuMel">--</strong> | Marca: <strong id="visBrandMel">--</strong></div>
-            <button class="vis-btn-print" onclick="imprimirConteudoModalMel()"><i class="material-icons">print</i> Imprimir Ficha Técnica</button>
             <div class="vis-header-row"><span>Descrição do Produto</span><span class="vis-chip" id="visDescScoreMel">--</span></div>
             <div class="vis-desc-box" id="visDescMel"></div>
             <div class="vis-specs-container"><div class="vis-header-row" style="margin-top:15px"><span>Especificações</span><span class="vis-chip" id="visAttrScoreMel">--</span></div><div id="visSpecsContentMel"></div></div>
@@ -805,7 +855,6 @@ echo "<div id='demoMel'></div></div>";
         if (b.classList.contains('closed')) { b.classList.remove('closed'); c.style.transform = 'rotate(0deg)'; } else { b.classList.add('closed'); c.style.transform = 'rotate(-90deg)'; }
     }
     
-    // TOOLTIP SCRIPT (Unico e Global - Verifica se já existe)
     if (typeof window.initHardnessTooltip === 'undefined') {
         window.initHardnessTooltip = true;
         var tipDiv = document.createElement('div'); tipDiv.id = 'hardness-custom-tooltip'; tipDiv.style.position = 'fixed'; tipDiv.style.display = 'none'; document.body.appendChild(tipDiv);
@@ -831,7 +880,6 @@ echo "<div id='demoMel'></div></div>";
     
     var appMel = {
         getFilters: function() {
-            // MAP: ID _mel -> $_POST['f_...']
             return {
                 f_tit: jQuery('#f_tit_mel').val(),
                 f_id_any: jQuery('#f_id_any_mel').val(),
@@ -854,42 +902,23 @@ echo "<div id='demoMel'></div></div>";
             var pageSizeVal = jQuery('#hardness_pageSize_mel').val();
             var urlVal      = jQuery('#hardness_ajaxUrl_mel').val();
             var sysIdVal    = jQuery('#sys_base_divId_mel').val();
-
             p = parseInt(p, 10) || 1; 
             var filters = this.getFilters(); 
             var size = parseInt(pageSizeVal, 10) || 50; 
-            
             if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
-            
             jQuery.ajax({ 
-                url: urlVal, 
-                type: 'POST', 
-                dataType: 'json', 
+                url: urlVal, type: 'POST', dataType: 'json', 
                 data: jQuery.extend({ ajax: 1, page: p, pageSize: size }, filters), 
                 success: function (r) { 
-                    if (r && r.ok) { 
-                        jQuery('#contentMel').html(r.html); 
-                        pagerMel.render('demoMel', r.total, p, size, 'appMel.loadData'); 
-                    } else { 
-                        jQuery('#contentMel').html('<div class="start-msg">Sem resultados</div>'); 
-                        jQuery('#demoMel').removeClass('active').html(''); 
-                    } 
+                    if (r && r.ok) { jQuery('#contentMel').html(r.html); pagerMel.render('demoMel', r.total, p, size, 'appMel.loadData'); } else { jQuery('#contentMel').html('<div class="start-msg">Sem resultados</div>'); jQuery('#demoMel').removeClass('active').html(''); } 
                 }, 
-                complete: function () { 
-                    if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); 
-                } 
+                complete: function () { if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); } 
             });
         }
     };
     
     function applyFiltersMel() { appMel.loadData(1); }
-
-    // [NOVA FUNÇÃO LIMPAR FILTROS]
-    function clearFiltersMel() {
-        jQuery('#filterBodyMel input').val('');
-        jQuery('#filterBodyMel select').val(''); 
-        // Não chama applyFiltersMel() para permitir escrita
-    }
+    function clearFiltersMel() { jQuery('#filterBodyMel input').val(''); jQuery('#filterBodyMel select').val(''); }
     
     function exportCSVMel() {
         var filters = appMel.getFilters(); 
@@ -901,57 +930,71 @@ echo "<div id='demoMel'></div></div>";
         document.body.appendChild(form); form.submit(); document.body.removeChild(form);
     }
     
-    // --- LÓGICA DE SELEÇÃO DE TIPO (MOD/CORR) ---
-    var idsPendingMel = []; // Armazena IDs temporariamente
-
-    function fecharModalTipoMel() {
+    var idsPendingMel = [];
+    function fecharModalTipoMel() { document.getElementById('modalTipoEnvioMel').style.display = 'none'; }
+    function cancelarEnvioMel() {
         document.getElementById('modalTipoEnvioMel').style.display = 'none';
+        document.getElementById('modalObsCorrecaoMel').style.display = 'none';
         idsPendingMel = [];
+        jQuery('#txtObsCorrecao').text('');
+        jQuery('.chk-tag-obs').prop('checked', false);
+        updateCharCounterMel(document.getElementById('txtObsCorrecao'));
     }
 
-    function enviarCorrecaoSingleMel(id) {
-        idsPendingMel = [id];
-        document.getElementById('modalTipoEnvioMel').style.display = 'flex';
-    }
-    
+    function enviarCorrecaoSingleMel(id) { idsPendingMel = [id]; document.getElementById('modalTipoEnvioMel').style.display = 'flex'; }
     function enviarCorrecaoMassaMel() {
-        var ids = [];
-        jQuery('.row-check:checked').each(function() { ids.push(jQuery(this).val()); });
+        var ids = []; jQuery('.row-check:checked').each(function() { ids.push(jQuery(this).val()); });
         if (ids.length === 0) { alert('Selecione pelo menos um item.'); return; }
-        
-        idsPendingMel = ids;
-        document.getElementById('modalTipoEnvioMel').style.display = 'flex';
+        idsPendingMel = ids; document.getElementById('modalTipoEnvioMel').style.display = 'flex';
     }
 
     function confirmarEnvioTipoMel(tipo) {
         if (idsPendingMel.length > 0) {
-            enviarAjaxCorrecaoMel(idsPendingMel, tipo);
+            if (tipo === 'corr') { fecharModalTipoMel(); document.getElementById('modalObsCorrecaoMel').style.display = 'flex'; }
+            else { enviarAjaxCorrecaoMel(idsPendingMel, tipo, '', ''); fecharModalTipoMel(); }
         }
-        fecharModalTipoMel();
+    }
+
+    function updateCharCounterMel(el) {
+        var count = el.innerText.length;
+        var display = document.getElementById('charCounterMel');
+        display.innerText = count + ' / 500';
+        if (count > 500) { display.className = 'char-counter char-red'; } 
+        else { display.className = 'char-counter char-green'; }
+    }
+
+    function finalizarEnvioCorrecao() {
+        var el = document.getElementById('txtObsCorrecao');
+        var obs = el.innerText;
+        if (obs.length > 500) { alert('Limite de 500 caracteres excedido!'); return; }
+
+        var tags = []; jQuery('.chk-tag-obs:checked').each(function() { tags.push(jQuery(this).val()); });
+        var tagsStr = tags.join(',');
+        if (idsPendingMel.length > 0) { enviarAjaxCorrecaoMel(idsPendingMel, 'corr', obs, tagsStr); }
+        document.getElementById('modalObsCorrecaoMel').style.display = 'none';
     }
     
-    function enviarAjaxCorrecaoMel(ids, tipo) {
+    function enviarAjaxCorrecaoMel(ids, tipo, obs, tags) {
         var url = jQuery('#hardness_ajaxUrl_mel').val();
         var sysIdVal = jQuery('#sys_base_divId_mel').val();
-
         if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
-        
         jQuery.ajax({
             url: url, type: 'POST', dataType: 'json',
-            data: { ajax: 1, action: 'send_correction_mel', ids: ids, tipo: tipo },
+            data: { ajax: 1, action: 'send_correction_mel', ids: ids, tipo: tipo, obs: obs, tags: tags },
             success: function(res) {
                 alert(res.msg || 'Processado.');
                 jQuery('.row-check').prop('checked', false);
+                idsPendingMel = [];
+                jQuery('#txtObsCorrecao').text('');
+                jQuery('.chk-tag-obs').prop('checked', false);
+                updateCharCounterMel(document.getElementById('txtObsCorrecao'));
             },
             complete: function() { if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); }
         });
     }
 
     var allSelectedMel = false;
-    function toggleSelectAllMel() {
-        allSelectedMel = !allSelectedMel;
-        jQuery('.row-check').prop('checked', allSelectedMel);
-    }
+    function toggleSelectAllMel() { allSelectedMel = !allSelectedMel; jQuery('.row-check').prop('checked', allSelectedMel); }
 
     const mVisMel = document.getElementById('modalVisMel'), vThumbsMel = document.getElementById('visThumbsMel'), vHeroMel = document.getElementById('visHeroMel'), vTitleMel = document.getElementById('visTitleMel'), vSkuMel = document.getElementById('visSkuMel'), vBrandMel = document.getElementById('visBrandMel'), vDescMel = document.getElementById('visDescMel'), vSpecsMel = document.getElementById('visSpecsContentMel');
     const elTSMel = document.getElementById('visTitleScoreMel'), elDSMel = document.getElementById('visDescScoreMel'), elISMel = document.getElementById('visImgScoreMel'), elASMel = document.getElementById('visAttrScoreMel');
@@ -961,7 +1004,6 @@ echo "<div id='demoMel'></div></div>";
         var url = document.getElementById('hardness_ajaxUrl_mel').value; 
         var sysIdVal = document.getElementById('sys_base_divId_mel').value;
         if (sysIdVal && typeof jQuery !== 'undefined' && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
-        
         jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'get_details_mel', sku: sku }, success: function (res) { if (res.ok) { vTitleMel.innerText = res.titulo; vSkuMel.innerText = res.sku; vBrandMel.innerText = res.marca; vDescMel.innerHTML = res.desc ? res.desc : '<em>Sem descrição.</em>'; const mT = getMetaNotaMel(res.scores.tit); elTSMel.style.backgroundColor = mT.c; elTSMel.innerText = res.scores.tit + ' - ' + mT.t; const mD = getMetaNotaMel(res.scores.desc); elDSMel.style.backgroundColor = mD.c; elDSMel.innerText = res.scores.desc + ' - ' + mD.t; const mI = getMetaNotaMel(res.scores.img); elISMel.style.backgroundColor = mI.c; elISMel.innerText = 'Fotos: ' + res.scores.img + ' (' + mI.t + ')'; const mA = getMetaNotaMel(res.scores.attr); elASMel.style.backgroundColor = mA.c; elASMel.innerText = res.scores.attr + ' - ' + mA.t; vThumbsMel.innerHTML = ''; if (res.imgs.length > 0) vHeroMel.src = res.imgs[0]; res.imgs.forEach((url, idx) => { let img = document.createElement('img'); img.src = url; img.className = 'vis-mini'; if (idx === 0) img.classList.add('active'); img.onclick = () => { vHeroMel.src = url; document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active')); img.classList.add('active'); }; vThumbsMel.appendChild(img); }); let h = '<table class="vis-specs-table">'; let has = false; if (res.specs.EAN) { h += `<tr><td><strong>EAN:</strong> ${res.specs.EAN}</td></tr>`; has = true; } if (res.specs.Garantia) { h += `<tr><td><strong>Garantia:</strong> ${res.specs.Garantia}</td></tr>`; has = true; } if (res.specs.Peso) { h += `<tr><td><strong>Peso:</strong> ${res.specs.Peso}</td></tr>`; has = true; } if (res.specs.Altura) { h += `<tr><td><strong>Altura:</strong> ${res.specs.Altura}</td></tr>`; has = true; } if (res.specs.Largura) { h += `<tr><td><strong>Largura:</strong> ${res.specs.Largura}</td></tr>`; has = true; } if (res.specs.Comprimento) { h += `<tr><td><strong>Comp.:</strong> ${res.specs.Comprimento}</td></tr>`; has = true; } h += '</table>'; vSpecsMel.innerHTML = has ? h : '<div style="color:#999;font-size:12px">Vazio</div>'; mVisMel.style.display = 'flex'; } else { alert(res.msg || 'Erro ao carregar'); } }, error: function () { alert('Erro na comunicação'); }, complete: function () { if (sysIdVal && typeof jQuery !== 'undefined' && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); } });
     }
     function fecharVisMel() { mVisMel.style.display = 'none'; }
