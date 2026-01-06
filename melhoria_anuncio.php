@@ -569,10 +569,10 @@ $style = <<<STYLE
     .f-btn-clear:hover { background: #dc2626; }
     
     .f-btn-export { background: #10b981; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
-    .f-btn-export:hover { background: #059669; }
+    .f-btn-export:hover { background: #df4343;; }
 
     .f-btn-send { background: #f59e0b; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
-    .f-btn-send:hover { background: #d97706; }
+    .f-btn-send:hover { background: #8bc92c; }
     
     .f-btn-send-single { background: #f59e0b; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
     .f-btn-send-single:hover { background: #d97706; }
@@ -693,7 +693,7 @@ $style = <<<STYLE
     .obs-wrapper { width:100%; display:flex; flex-direction:column; gap:15px; position: relative; }
     .obs-input { 
         width:100%; min-height:150px; max-height: 150px; overflow-y: auto; 
-        border:1px solid #d1d5db; border-radius:12px; padding:15px; font-size:14px; color:#374151; 
+        border:1px solid #d1d5db; border-radius:8px; padding:1px; font-size:14px; color:#374151; 
         outline:none; transition:0.2s; font-family:inherit; background:#fff; line-height:1.5;
     }
     .obs-input:focus { border-color:var(--primary); box-shadow:0 0 0 4px rgba(0,152,211,0.1); }
