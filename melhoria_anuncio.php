@@ -15,6 +15,11 @@ ini_set('display_errors', 1);
 $qtdePorPagina = 150;
 $limit         = $qtdePorPagina;
 
+// --- [CORREÇÃO DE CONTEXTO - DIV ROOT E ID] ---
+// Recupera do ERP ($g) ou do POST (seja via sys_ ou nomes nativos) para manter a hierarquia de janelas
+$gDivRoot = isset($g['divRoot']) && $g['divRoot'] != "" ? $g['divRoot'] : (isset($_POST['sys_divRoot']) ? $_POST['sys_divRoot'] : (isset($_POST['divIdRoot']) ? $_POST['divIdRoot'] : ''));
+$gDivId   = isset($g['divId']) && $g['divId'] != "" ? $g['divId'] : (isset($_POST['sys_divId']) ? $_POST['sys_divId'] : (isset($_POST['divId']) ? $_POST['divId'] : 'contentMel'));
+
 // --- [EMPRESA ATUAL] ---
 $C004_Id = isset($g['empresaAtual']) ? (int) $g['empresaAtual'] : 1;
 
@@ -31,9 +36,32 @@ $offset = ($page - 1) * $limit;
 $isAjax  = (isset($_POST['ajax']) && (int) $_POST['ajax'] === 1);
 $apiMode = 0;
 
+// INDICADOR VISUAL (Azul)
+if (!$isAjax) {
+    echo "<div style='
+            position: fixed; bottom: 20px; right: 20px;
+            background: #ffffff; color: #1f2937;
+            padding: 10px 16px; border-radius: 50px;
+            font-size: 12px; font-family: -apple-system, sans-serif; font-weight: 600;
+            z-index: 999998; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border: 1px solid #f3f4f6; pointer-events: none; display:flex; align-items:center; gap:8px;
+          '>
+            <span style='background:#0098D3; width:8px; height:8px; border-radius:50%; display:inline-block;'></span>
+            <span>Melhoria Anúncio: <strong style='color: #111827;'>ID {$C004_Id}</strong></span>
+          </div>";
+}
+
 // =============================================================================
 // [FUNC] FUNÇÕES DE CÁLCULO (SCORE) - COM SUFIXO _MEL
 // =============================================================================
+if (!function_exists('extrairMarcaJsonAnyMarketMel')) {
+    function extrairMarcaJsonAnyMarketMel($jsonString) {
+        if (empty($jsonString)) return "";
+        $obj = json_decode($jsonString);
+        if (isset($obj->content[0]->brand->name)) return trim($obj->content[0]->brand->name);
+        return "";
+    }
+}
 if (!function_exists('analiseTituloMel')) {
     function analiseTituloMel($titulo) {
         $len = mb_strlen(trim($titulo));
@@ -140,10 +168,23 @@ if (!function_exists('gerarTooltipHtmlMel')) {
 // [RENDER] FUNÇÃO DE LINHA (D001E)
 // =============================================================================
 function renderQualityRowMel($row) {
-    $marca = isset($row['D001E_Marca']) ? $row['D001E_Marca'] : 'ND';
-    
+    // --- USO DE GLOBAIS RECUPERADAS PARA EVITAR QUEBRA DE SKU ---
+    global $gDivRoot, $gDivId;
+
+    $marca       = isset($row['D001E_Marca']) ? $row['D001E_Marca'] : '';
+    $updateMarca = false;
+    if (empty($marca) && !empty($row['D001E_Json_Nativo'])) {
+        $marcaExtraida = extrairMarcaJsonAnyMarketMel($row['D001E_Json_Nativo']);
+        if (!empty($marcaExtraida)) {
+            $marca       = $marcaExtraida;
+            $updateMarca = true;
+        } else {
+            $marca = "ND";
+        }
+    }
+
     // SCORE
-    $resT  = analiseTituloMel($row['D001E_Sku_Titulo']);
+    $resT  = analiseTituloMel($row['D001E_Sku_Titulo']); // Corrigido para Sku_Titulo
     $resD  = analiseDescricaoMel($row['D001E_Descricao']);
     $resI  = analiseImagensMel($row);
     $resA  = analiseAtributosMel($row);
@@ -163,6 +204,11 @@ function renderQualityRowMel($row) {
     if ($row['D001E_pont_desc'] != $resD['nota']) $sqlSets[] = "D001E_pont_desc = {$resD['nota']}";
     if ($row['D001E_pont_img'] != $resI['nota']) $sqlSets[] = "D001E_pont_img = {$resI['nota']}";
     if ($row['D001E_pont_espec'] != $resA['nota']) $sqlSets[] = "D001E_pont_espec = {$resA['nota']}";
+
+    if ($updateMarca) {
+        $marcaSafe = mysql_real_escape_string($marca);
+        $sqlSets[] = "D001E_Marca = '$marcaSafe'";
+    }
 
     if (!empty($sqlSets)) {
         $sqlUpdate = "UPDATE D001E SET " . implode(', ', $sqlSets) . " WHERE D001E_Id = $idProd";
@@ -206,6 +252,7 @@ function renderQualityRowMel($row) {
 
     $d001Id    = $row['D001E_D001_Id'];
 
+    // Monta JS com as globais seguras
     $jsForn = "abrirJanela(false, '{$gDivRoot}', '{$gDivId}', unique(), '', 'Anuncio', '/cad/cad002/content/form2/', '&acaoId=' + encodeURIComponent('{$d001Id}'), [700,400]); return false;";
 
     return "
@@ -217,11 +264,12 @@ function renderQualityRowMel($row) {
         <div class='thumb-box' onclick='abrirVisualizadorMel(\"$sku\")'>
             <img src='$imgCapa'>
         </div>
+        
         <div class='col-info'>
             <div class='prod-title'>{$row['D001E_Sku_Titulo']}</div>
             <div class='prod-sub'>
                 <span class='badge-any' title='ID AnyMarket' style='cursor:pointer' onclick='window.open(\"https://app.anymarket.com.br/app-js/products/edit/$idAny\", \"_blank\"); event.stopPropagation();'>Id Any: $idAny</span>
-                <span class='badge-sku' title='SKU Produto' href='#' onclick=\"{$jsForn}\"'>Sku: $sku</span>
+                <span class='badge-sku' title='SKU Produto' style='cursor:pointer' onclick=\"{$jsForn}\">Sku: $sku</span>
                 <span class='badge-brand' title='$marcaHtml'>Marca: $marcaHtml</span>
             </div>
         </div>
@@ -473,10 +521,10 @@ if ($isAjax) {
     if (isset($_POST['action']) && $_POST['action'] === 'get_details_mel') {
         $skuBusca = isset($_POST['sku']) ? mysql_real_escape_string($_POST['sku']) : '';
         $sqlDet = "SELECT T1.*, T2.D009_Frequencia_Venda, T2.D009_Valor_Custo_Unitario, T2.D009_Quantidade_Estoque_Tabela, T2.D009_Quantidade_Estoque_Liquido
-                       FROM D001E AS T1
-                       LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001E_D001_Id
-                       LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id)
-                       WHERE T1.D001E_D001_Codigo_Produto = '$skuBusca' LIMIT 1";
+                        FROM D001E AS T1
+                        LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001E_D001_Id
+                        LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id)
+                        WHERE T1.D001E_D001_Codigo_Produto = '$skuBusca' LIMIT 1";
         $rsDet  = mysql_query($sqlDet);
         if ($rsDet && mysql_num_rows($rsDet) > 0) {
             $row = mysql_fetch_assoc($rsDet);
@@ -775,7 +823,9 @@ $sysDivId = isset($g['divId']) ? $g['divId'] : 'contentMel';
 echo "<input type='hidden' id='hardness_total_mel' value='0'>";
 echo "<input type='hidden' id='hardness_pageSize_mel' value='" . (int) $limit . "'>";
 echo "<input type='hidden' id='hardness_ajaxUrl_mel' value='" . $ajaxUrl . "'>";
-echo "<input type='hidden' id='sys_base_divId_mel' value='" . $sysDivId . "'>";
+// [CORREÇÃO] Adicionado Inputs para passar o Contexto
+echo "<input type='hidden' id='sys_base_divRoot_mel' value='" . $gDivRoot . "'>";
+echo "<input type='hidden' id='sys_base_divId_mel' value='" . $gDivId . "'>";
 echo "<div id='demoMel'></div></div>";
 ?>
 
@@ -902,13 +952,17 @@ echo "<div id='demoMel'></div></div>";
             var pageSizeVal = jQuery('#hardness_pageSize_mel').val();
             var urlVal      = jQuery('#hardness_ajaxUrl_mel').val();
             var sysIdVal    = jQuery('#sys_base_divId_mel').val();
+            var sysRootVal  = jQuery('#sys_base_divRoot_mel').val(); // [CORREÇÃO] Recupera root
+            
             p = parseInt(p, 10) || 1; 
             var filters = this.getFilters(); 
             var size = parseInt(pageSizeVal, 10) || 50; 
             if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
+            
+            // [CORREÇÃO] Envia sys_divRoot e sys_divId de volta
             jQuery.ajax({ 
                 url: urlVal, type: 'POST', dataType: 'json', 
-                data: jQuery.extend({ ajax: 1, page: p, pageSize: size }, filters), 
+                data: jQuery.extend({ ajax: 1, page: p, pageSize: size, sys_divRoot: sysRootVal, sys_divId: sysIdVal }, filters), 
                 success: function (r) { 
                     if (r && r.ok) { jQuery('#contentMel').html(r.html); pagerMel.render('demoMel', r.total, p, size, 'appMel.loadData'); } else { jQuery('#contentMel').html('<div class="start-msg">Sem resultados</div>'); jQuery('#demoMel').removeClass('active').html(''); } 
                 }, 
@@ -977,10 +1031,11 @@ echo "<div id='demoMel'></div></div>";
     function enviarAjaxCorrecaoMel(ids, tipo, obs, tags) {
         var url = jQuery('#hardness_ajaxUrl_mel').val();
         var sysIdVal = jQuery('#sys_base_divId_mel').val();
+        var sysRootVal = jQuery('#sys_base_divRoot_mel').val();
         if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
         jQuery.ajax({
             url: url, type: 'POST', dataType: 'json',
-            data: { ajax: 1, action: 'send_correction_mel', ids: ids, tipo: tipo, obs: obs, tags: tags },
+            data: { ajax: 1, action: 'send_correction_mel', ids: ids, tipo: tipo, obs: obs, tags: tags, sys_divRoot: sysRootVal, sys_divId: sysIdVal },
             success: function(res) {
                 alert(res.msg || 'Processado.');
                 jQuery('.row-check').prop('checked', false);
@@ -1003,8 +1058,10 @@ echo "<div id='demoMel'></div></div>";
     function abrirVisualizadorMel(sku) {
         var url = document.getElementById('hardness_ajaxUrl_mel').value; 
         var sysIdVal = document.getElementById('sys_base_divId_mel').value;
+        var sysRootVal = document.getElementById('sys_base_divRoot_mel').value;
         if (sysIdVal && typeof jQuery !== 'undefined' && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
-        jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'get_details_mel', sku: sku }, success: function (res) { if (res.ok) { vTitleMel.innerText = res.titulo; vSkuMel.innerText = res.sku; vBrandMel.innerText = res.marca; vDescMel.innerHTML = res.desc ? res.desc : '<em>Sem descrição.</em>'; const mT = getMetaNotaMel(res.scores.tit); elTSMel.style.backgroundColor = mT.c; elTSMel.innerText = res.scores.tit + ' - ' + mT.t; const mD = getMetaNotaMel(res.scores.desc); elDSMel.style.backgroundColor = mD.c; elDSMel.innerText = res.scores.desc + ' - ' + mD.t; const mI = getMetaNotaMel(res.scores.img); elISMel.style.backgroundColor = mI.c; elISMel.innerText = 'Fotos: ' + res.scores.img + ' (' + mI.t + ')'; const mA = getMetaNotaMel(res.scores.attr); elASMel.style.backgroundColor = mA.c; elASMel.innerText = res.scores.attr + ' - ' + mA.t; vThumbsMel.innerHTML = ''; if (res.imgs.length > 0) vHeroMel.src = res.imgs[0]; res.imgs.forEach((url, idx) => { let img = document.createElement('img'); img.src = url; img.className = 'vis-mini'; if (idx === 0) img.classList.add('active'); img.onclick = () => { vHeroMel.src = url; document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active')); img.classList.add('active'); }; vThumbsMel.appendChild(img); }); let h = '<table class="vis-specs-table">'; let has = false; if (res.specs.EAN) { h += `<tr><td><strong>EAN:</strong> ${res.specs.EAN}</td></tr>`; has = true; } if (res.specs.Garantia) { h += `<tr><td><strong>Garantia:</strong> ${res.specs.Garantia}</td></tr>`; has = true; } if (res.specs.Peso) { h += `<tr><td><strong>Peso:</strong> ${res.specs.Peso}</td></tr>`; has = true; } if (res.specs.Altura) { h += `<tr><td><strong>Altura:</strong> ${res.specs.Altura}</td></tr>`; has = true; } if (res.specs.Largura) { h += `<tr><td><strong>Largura:</strong> ${res.specs.Largura}</td></tr>`; has = true; } if (res.specs.Comprimento) { h += `<tr><td><strong>Comp.:</strong> ${res.specs.Comprimento}</td></tr>`; has = true; } h += '</table>'; vSpecsMel.innerHTML = has ? h : '<div style="color:#999;font-size:12px">Vazio</div>'; mVisMel.style.display = 'flex'; } else { alert(res.msg || 'Erro ao carregar'); } }, error: function () { alert('Erro na comunicação'); }, complete: function () { if (sysIdVal && typeof jQuery !== 'undefined' && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); } });
+        // [CORREÇÃO] Adicionando contexto ao payload
+        jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'get_details_mel', sku: sku, sys_divRoot: sysRootVal, sys_divId: sysIdVal }, success: function (res) { if (res.ok) { vTitleMel.innerText = res.titulo; vSkuMel.innerText = res.sku; vBrandMel.innerText = res.marca; vDescMel.innerHTML = res.desc ? res.desc : '<em>Sem descrição.</em>'; const mT = getMetaNotaMel(res.scores.tit); elTSMel.style.backgroundColor = mT.c; elTSMel.innerText = res.scores.tit + ' - ' + mT.t; const mD = getMetaNotaMel(res.scores.desc); elDSMel.style.backgroundColor = mD.c; elDSMel.innerText = res.scores.desc + ' - ' + mD.t; const mI = getMetaNotaMel(res.scores.img); elISMel.style.backgroundColor = mI.c; elISMel.innerText = 'Fotos: ' + res.scores.img + ' (' + mI.t + ')'; const mA = getMetaNotaMel(res.scores.attr); elASMel.style.backgroundColor = mA.c; elASMel.innerText = res.scores.attr + ' - ' + mA.t; vThumbsMel.innerHTML = ''; if (res.imgs.length > 0) vHeroMel.src = res.imgs[0]; res.imgs.forEach((url, idx) => { let img = document.createElement('img'); img.src = url; img.className = 'vis-mini'; if (idx === 0) img.classList.add('active'); img.onclick = () => { vHeroMel.src = url; document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active')); img.classList.add('active'); }; vThumbsMel.appendChild(img); }); let h = '<table class="vis-specs-table">'; let has = false; if (res.specs.EAN) { h += `<tr><td><strong>EAN:</strong> ${res.specs.EAN}</td></tr>`; has = true; } if (res.specs.Garantia) { h += `<tr><td><strong>Garantia:</strong> ${res.specs.Garantia}</td></tr>`; has = true; } if (res.specs.Peso) { h += `<tr><td><strong>Peso:</strong> ${res.specs.Peso}</td></tr>`; has = true; } if (res.specs.Altura) { h += `<tr><td><strong>Altura:</strong> ${res.specs.Altura}</td></tr>`; has = true; } if (res.specs.Largura) { h += `<tr><td><strong>Largura:</strong> ${res.specs.Largura}</td></tr>`; has = true; } if (res.specs.Comprimento) { h += `<tr><td><strong>Comp.:</strong> ${res.specs.Comprimento}</td></tr>`; has = true; } h += '</table>'; vSpecsMel.innerHTML = has ? h : '<div style="color:#999;font-size:12px">Vazio</div>'; mVisMel.style.display = 'flex'; } else { alert(res.msg || 'Erro ao carregar'); } }, error: function () { alert('Erro na comunicação'); }, complete: function () { if (sysIdVal && typeof jQuery !== 'undefined' && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); } });
     }
     function fecharVisMel() { mVisMel.style.display = 'none'; }
     function imprimirConteudoModalMel() { const f = document.createElement('iframe'); f.style.display = 'none'; document.body.appendChild(f); const d = f.contentWindow.document; const s = vSpecsMel.innerHTML; const c = `<html><head><style>body{font-family:Arial,sans-serif;padding:20px;color:#333}h1{font-size:24px;margin-bottom:5px}.meta{color:#666;font-size:12px;margin-bottom:20px;border-bottom:1px solid #ccc;padding-bottom:10px}.hero{text-align:center;margin-bottom:20px}.hero img{max-width:300px;max-height:300px}.desc{font-size:12px;line-height:1.5;margin-bottom:20px; text-align:justify;}.specs-box{border:1px solid #eee;padding:10px;border-radius:5px}.specs-box table{width:100%;font-size:12px}.specs-box td{padding:4px 0}</style></head><body><h1>${vTitleMel.innerText}</h1><div class="meta">SKU: ${vSkuMel.innerText} | ${vBrandMel.innerText}</div><div class="hero"><img src="${vHeroMel.src}"></div><h3>Descrição</h3><div class="desc">${vDescMel.innerHTML}</div><h3>Specs</h3><div class="specs-box">${s}</div></body></html>`; d.open(); d.write(c); d.close(); setTimeout(() => { f.contentWindow.print(); setTimeout(() => document.body.removeChild(f), 1000); }, 200); }
