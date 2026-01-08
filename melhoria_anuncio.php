@@ -36,21 +36,6 @@ $offset = ($page - 1) * $limit;
 $isAjax  = (isset($_POST['ajax']) && (int) $_POST['ajax'] === 1);
 $apiMode = 0;
 
-// INDICADOR VISUAL (Azul)
-if (!$isAjax) {
-    echo "<div style='
-            position: fixed; bottom: 20px; right: 20px;
-            background: #ffffff; color: #1f2937;
-            padding: 10px 16px; border-radius: 50px;
-            font-size: 12px; font-family: -apple-system, sans-serif; font-weight: 600;
-            z-index: 999998; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            border: 1px solid #f3f4f6; pointer-events: none; display:flex; align-items:center; gap:8px;
-          '>
-            <span style='background:#0098D3; width:8px; height:8px; border-radius:50%; display:inline-block;'></span>
-            <span>Melhoria Anúncio: <strong style='color: #111827;'>ID {$C004_Id}</strong></span>
-          </div>";
-}
-
 // =============================================================================
 // [FUNC] FUNÇÕES DE CÁLCULO (SCORE) - COM SUFIXO _MEL
 // =============================================================================
@@ -310,7 +295,7 @@ function renderQualityRowMel($row) {
         </div>
         
         <div class='col-actions' style='display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;'>
-             <button class='f-btn-send-single' onclick='enviarCorrecaoSingleMel(\"$idProd\")' title='Enviar para Correção' style='width:100%; border-radius:4px; padding:8px 0;'><i class='material-icons' style='font-size:18px'>build</i></button>
+             <button class='f-btn-send-single' onclick='enviarCorrecaoSingleMel(\"$idProd\")' title='Enviar para Melhoria' style='width:100%; border-radius: 8px; padding:8px 0;'><i class='material-icons' style='font-size:18px'>build</i></button>
         </div>
     </div>";
 }
@@ -593,7 +578,7 @@ $style = <<<STYLE
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background-color: var(--bg-body); margin: 0; padding: 20px; color: var(--text-color); }
     .quality-list { max-width: 1600px; margin: 0 auto; margin-top: 20px; }
     
-    .filter-container { background: #fff; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 16px; margin-bottom: 20px; max-width: 1600px; margin: 0 auto 20px auto; border: 1px solid #e5e7eb; }
+    .filter-container { background: #fff; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 16px; margin-bottom: 20px; max-width: 1570px; margin: 0 auto 20px auto; border: 1px solid #e5e7eb; }
     .filter-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
     .filter-title { font-size: 14px; font-weight: 700; color: #374151; display:flex; align-items:center; gap:8px; text-transform:uppercase; letter-spacing:0.05em; }
     .filter-icon { color: var(--primary); font-size: 20px; }
@@ -605,24 +590,24 @@ $style = <<<STYLE
     .f-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
     .f-group { display: flex; flex-direction: column; gap: 4px; }
     .f-label { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; }
-    .f-input { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; outline: none; transition: all 0.2s; width: 100%; }
+    .f-input { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 12px; outline: none; transition: all 0.2s; width: 100%; }
     .f-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(0, 152, 211, 0.15); }
     .f-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f3f4f6; gap: 10px; }
     
-    .f-btn-apply { background: var(--primary); color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
-    .f-btn-apply:hover { background: #007bb5; }
+    .f-btn-apply { background: var(--primary); color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
+    .f-btn-apply:hover { background: #acc2ff; }
     
     /* [NOVO] BOTÃO LIMPAR */
-    .f-btn-clear { background: #ef4444; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
-    .f-btn-clear:hover { background: #dc2626; }
+    .f-btn-clear { background: #ef4444; color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
+    .f-btn-clear:hover { background: #ff8282; }
     
-    .f-btn-export { background: #10b981; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
-    .f-btn-export:hover { background: #df4343;; }
+    .f-btn-export { background: #10b981; color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
+    .f-btn-export:hover { background: #10b981; }
 
-    .f-btn-send { background: #f59e0b; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
+    .f-btn-send { background: #f59e0b; color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
     .f-btn-send:hover { background: #8bc92c; }
     
-    .f-btn-send-single { background: #f59e0b; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+    .f-btn-send-single { background: #f59e0b; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; transition: 0.2s; }
     .f-btn-send-single:hover { background: #d97706; }
 
     /* --- LAYOUT GRID ISOLADO (_mel) --- */
@@ -644,7 +629,7 @@ $style = <<<STYLE
     .quality-header-mel > div { display: flex; align-items: center; justify-content: center; text-align: center; }
     .quality-header-mel > div:nth-child(3), .quality-header-mel > div:nth-child(5), .quality-header-mel > div:nth-child(6) { justify-content: flex-start; text-align: left; }
     
-    .quality-row-mel { background: var(--card-bg); border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 14px 16px; margin-bottom: 10px; border: 1px solid transparent; transition: all 0.2s; }
+    .quality-row-mel { background: var(--card-bg); border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 14px 16px; margin-bottom: 10px; border: 1px solid transparent; transition: all 0.2s; }
     .quality-row-mel:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-color: #d1d5db; }
     
     .thumb-box { width: 64px; height: 64px; border-radius: 8px; border: 1px solid #e5e7eb; padding: 3px; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
@@ -654,34 +639,34 @@ $style = <<<STYLE
     .col-info { display: flex; flex-direction: column; gap: 4px; overflow: visible !important; justify-content: center; }
     .prod-title { font-size: 13px; font-weight: 600; color: #111827; line-height: 1.3; }
     .prod-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .prod-sku { font-size: 10px; color: #4b5563; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: monospace; border: 1px solid #e5e7eb; }
+    .prod-sku { font-size: 10px; color: #4b5563; background: #f3f4f6; padding: 2px 6px; border-radius: 8px; font-family: monospace; border: 1px solid #e5e7eb; }
     .prod-brand { font-size: 10px; font-weight: 700; color: var(--primary); white-space: nowrap; }
     
     /* BADGES */
-    .badge-any { font-size: 10px; color: #fff; background: #FF600F; padding: 2px 6px; border-radius: 4px; font-family: monospace; border: 1px solid #e65100; font-weight: 700; }
-    .badge-sku { font-size: 10px; color: #fff; background: #089BD4; padding: 2px 6px; border-radius: 4px; font-family: monospace; border: 1px solid #0284c7; font-weight: 700; }
-    .badge-brand { font-size: 10px; color: #374151; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; border: 1px solid #d1d5db; font-weight: 700; }
+    .badge-any { font-size: 10px; color: #fff; background: #FF600F; padding: 2px 6px; border-radius: 8px; font-family: monospace; border: 1px solid #e65100; font-weight: 700; }
+    .badge-sku { font-size: 10px; color: #fff; background: #089BD4; padding: 2px 6px; border-radius: 8px; font-family: monospace; border: 1px solid #0284c7; font-weight: 700; }
+    .badge-brand { font-size: 10px; color: #374151; background: #f3f4f6; padding: 2px 6px; border-radius: 8px; border: 1px solid #d1d5db; font-weight: 700; }
 
-    .col-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; background: #f9fafb; padding: 6px 10px; border-radius: 8px; border: 1px solid #f3f4f6; }
-    .metric-cell { display: flex; justify-content: space-between; align-items: center; font-size: 11px; }
-    .metric-cell .lbl { color: #9ca3af; font-size: 10px; font-weight: 600; text-transform: uppercase; margin-right: 4px; }
+    .col-metrics { display: block; grid-template-columns: 1fr 1fr; gap: 4px 10px; background: #f9fafb; padding: 6px 10px; border-radius: 8px; border: 1px solid #f3f4f6; min-height: 140px; place-self: anchor-center; align-content: center; }
+    .metric-cell { display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding-top: 10px; padding-bottom: 10px;}
+    .metric-cell .lbl { color: #9ca3af; font-size: 11px; font-weight: 600; text-transform: uppercase; margin-right: 50px; }
     .metric-cell .val { color: #374151; }
     
     /* BASE SCROLL CLASS */
-    .col-box-scroll { font-size: 11px; color: #4b5563; background: #fff; padding: 4px; line-height: 1.4; border-radius: 4px; border: 1px solid #f3f4f6; box-shadow: inherit; text-align: left; }
+    .col-box-scroll { font-size: 11px; color: #4b5563; background: #fff; padding: 4px; line-height: 1.4; border-radius: 8px; border: 1px solid #f3f4f6; box-shadow: inherit; text-align: left; }
     
     /* DESC: SCROLL */
-    .desc-scroll-mel { max-height: 80px; overflow-y: auto; }
+    .desc-scroll-mel { max-height: 80px; overflow-y: auto; min-height: 140px;}
     
     /* SPEC: AUTO STACKED */
-    .spec-auto-mel { height: auto; overflow: visible; display: flex; flex-direction: column; }
+    .spec-auto-mel { height: auto; overflow: visible; display: flex; flex-direction: column; min-height: 140px;}
     .spec-auto-mel span { display: block; border-bottom: 1px solid #f9fafb; padding: 2px 0; }
 
     .col-box-scroll::-webkit-scrollbar { width: 3px; }
     .col-box-scroll::-webkit-scrollbar-thumb { background: #d1d5db; }
     
     .mini-score-box { display: flex; flex-direction: column; align-items: center; cursor: help; }
-    .mini-score-val { width: 28px; height: 28px; border-radius: 6px; background: #e5e7eb; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
+    .mini-score-val { width: 28px; height: 28px; border-radius: 8px; background: #e5e7eb; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
     .col-score { display: flex; flex-direction: column; align-items: center; justify-content: center; }
     .score-circle { position: relative; width: 44px; height: 44px; border-radius: 50%; background: conic-gradient(var(--color) calc(var(--percent) * 1%), #e5e7eb 0); display: flex; align-items: center; justify-content: center; margin-bottom: 2px; }
     .score-circle::before { content: ""; position: absolute; width: 34px; height: 34px; border-radius: 50%; background: #ffffff; }
@@ -698,22 +683,22 @@ $style = <<<STYLE
     .header-tooltip-title { font-weight: 700; color: var(--primary); border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; }
     .header-rule-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px; color: #4b5563; }
     .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(3px); padding: 20px; }
-    .modal-content { background: #fff; width: 100%; max-width: 1100px; height: 90%; border-radius: 12px; position: relative; display: flex; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+    .modal-content { background: #fff; width: 100%; max-width: 1100px; height: 90%; border-radius: 8px; position: relative; display: flex; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
     .close-modal { position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; z-index: 100; color: #9ca3af; }
     .close-modal:hover { color: #333; }
     .vis-thumbs { width: 100px; background: #f9fafb; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; border-right: 1px solid #e5e7eb; }
-    .vis-mini { width: 100%; height: 70px; object-fit: contain; border: 2px solid transparent; border-radius: 6px; cursor: pointer; background: #fff; border: 1px solid #f1f1f1; }
+    .vis-mini { width: 100%; height: 70px; object-fit: contain; border: 2px solid transparent; border-radius: 8px; cursor: pointer; background: #fff; border: 1px solid #f1f1f1; }
     .vis-mini.active { border-color: var(--primary); }
     .vis-main { flex: 1; display: flex; justify-content: center; align-items: center; background: #fff; padding: 20px; position: relative; }
     .vis-main img { max-width: 100%; max-height: 100%; object-fit: contain; }
     .vis-score-badge { position: absolute; top: 15px; left: 15px; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; color: #fff; background: var(--primary); z-index: 10; }
     .vis-info { width: 350px; border-left: 1px solid #e5e7eb; padding: 20px; overflow-y: auto; background: #fff; display: flex; flex-direction: column; gap: 15px; }
     .vis-h1 { font-size: 18px; font-weight: 700; margin: 0; color: #111827; line-height: 1.3; }
-    .vis-chip { padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; color: #fff; background: var(--primary); display: inline-block; vertical-align: middle; margin-left: 6px; }
+    .vis-chip { padding: 2px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; color: #fff; background: var(--primary); display: inline-block; vertical-align: middle; margin-left: 6px; }
     .vis-meta { font-size: 12px; color: #6b7280; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; }
-    .vis-btn-print { width: 100%; padding: 10px; background: #1f2937; color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .vis-btn-print { width: 100%; padding: 10px; background: #1f2937; color: #fff; border: none; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
     .vis-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-weight: 700; font-size: 12px; color: #111827; }
-    .vis-desc-box { font-size: 12px; line-height: 1.5; color: #4b5563; background: #f9fafb; padding: 10px; border-radius: 6px; border: 1px solid #e5e7eb; max-height: 150px; overflow-y: auto; }
+    .vis-desc-box { font-size: 12px; line-height: 1.5; color: #4b5563; background: #f9fafb; padding: 10px; border-radius: 8px; border: 1px solid #e5e7eb; max-height: 150px; overflow-y: auto; }
     .vis-specs-table td { padding: 4px 0; border-bottom: 1px solid #f3f4f6; color: #4b5563; font-size: 12px; }
     #demoMel { padding: 20px 0; display:none; flex-wrap:wrap; align-items:center; justify-content:center; gap:5px; }
     #demoMel.active { display: flex; }
@@ -728,7 +713,7 @@ $style = <<<STYLE
     
     /* MODAL TIPO ENVIO */
     .btn-sel-type {
-        border: 2px solid #e5e7eb; background: #fff; padding: 20px; border-radius: 12px;
+        border: 2px solid #e5e7eb; background: #fff; padding: 20px; border-radius: 8px;
         font-size: 14px; font-weight: 700; color: #374151; cursor: pointer; transition: all 0.2s;
         display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
         width: 140px; height: 120px;
@@ -749,7 +734,7 @@ $style = <<<STYLE
     
     .char-counter { 
         position: absolute; bottom: 10px; right: 15px; font-size: 11px; font-weight: 800; 
-        background: rgba(255,255,255,0.9); padding: 2px 6px; border-radius: 4px;
+        background: rgba(255,255,255,0.9); padding: 2px 6px; border-radius: 8px;
     }
     .char-green { color: #10b981; }
     .char-red { color: #ef4444; }
@@ -794,10 +779,10 @@ echo "
             <div class='f-group'><label class='f-label'>Nota Geral</label><input type='text' id='f_sco_mel' class='f-input'></div>
         </div>
         <div class='f-actions'>
-            <button class='f-btn-apply' onclick='applyFiltersMel()'><i class='material-icons'>search</i> Aplicar Filtros</button>
-            <button class='f-btn-clear' onclick='clearFiltersMel()'><i class='material-icons'>backspace</i> Limpar</button>
-            <button class='f-btn-export' onclick='exportCSVMel()'><i class='material-icons'>file_download</i> Exportar CSV</button>
-            <button class='f-btn-send' onclick='enviarCorrecaoMassaMel()'><i class='material-icons'>playlist_add_check</i> Enviar Selecionados</button>
+            <button class='f-btn-apply' onclick='applyFiltersMel()' title='Aplicar Filtros'><i class='material-icons'>search</i></button>
+            <button class='f-btn-clear' onclick='clearFiltersMel()' title='Limpar'><i class='material-icons'>backspace</i></button>
+            <button class='f-btn-export' onclick='exportCSVMel()' title='Exportar CSV'><i class='material-icons'>file_download</i></button>
+            <button class='f-btn-send' onclick='enviarCorrecaoMassaMel()' title='Enviar Selecionados'><i class='material-icons'>playlist_add_check</i></button>
         </div>
     </div>
 </div>";

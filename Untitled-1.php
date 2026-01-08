@@ -1,159 +1,325 @@
-<?php
-// =============================================================================
-// POPULADOR D001E - ATUALIZAÇÃO DO ID SKU ANYMARKET E TÍTULO
-// =============================================================================
+CONTEXTO FIXO DO SISTEMA (ERP HARDNESS)
 
-error_reporting(E_ALL & ~E_NOTICE);
-ini_set('display_errors', 1);
 
-global $g, $confUsuario;
 
-// 1) CARREGAR CLASSES
-if (!class_exists('API001') && !class_exists('hardness\\API001')) {
-    require_once('bibliotecas/classes/API001.php');
-}
-if (!class_exists('GMP010') && !class_exists('hardness\\GMP010')) {
-    require_once('bibliotecas/classes/GMP010.php');
-}
+Ambiente
 
-// 2) INICIALIZAR API
-try {
-    $apiClass = class_exists('hardness\\API001') ? 'hardness\\API001' : 'API001';
-    $API001   = new $apiClass();
-    $token    = $API001->executaProcesso(527);
+Desenvolvimento exclusivo via IDE interna do ERP (browser)
 
-    $baseUrl         = 'https://api.anymarket.com.br/v2';
-    $globalPathDados = isset($g['pathDados']) ? $g['pathDados'] : null;
-    $gmpClass        = class_exists('hardness\\GMP010') ? 'hardness\\GMP010' : 'GMP010';
-    $apiManager      = new $gmpClass($baseUrl, $token, 3, [], 'error_log', $globalPathDados);
-} catch (\Exception $e) {
-    return;
-}
+Sem acesso à árvore de arquivos do servidor
 
-// 3) CONFIGURAÇÃO DO LOOP
-$reqCount     = 0;
-$maxRequests  = 3000;
-$loteTamanho  = 200;
+Código inserido em blocos/modais inline
 
-while (true) {
-    if ($reqCount >= $maxRequests) break;
 
-    $precisaConectar = false;
 
-    if ($reqCount > 0 && $reqCount % $loteTamanho == 0) {
-        $precisaConectar = true;
-        sleep(10);
-    }
+Stack Permitida
 
-    if (!isset($g['conexaoBanco']) || !$g['conexaoBanco'] || !($g['conexaoBanco'] instanceof \mysqli)) {
-        $precisaConectar = true;
-    } elseif (!@\mysqli_ping($g['conexaoBanco'])) {
-        $precisaConectar = true;
-    }
+PHP 7.x
 
-    if ($precisaConectar) {
-        if (isset($g['conexaoBanco']) && $g['conexaoBanco'] instanceof \mysqli) @\mysqli_close($g['conexaoBanco']);
-        $con = @\mysqli_connect($confUsuario['dbHost'], $confUsuario['dbUser'], $confUsuario['dbPass'], $confUsuario['dbDatabase']);
-        if ($con) {
-            $g['conexaoBanco'] = $con;
-        } else {
-            sleep(2);
-            continue;
-        }
-    }
+MySQL 8.x
 
-    // 4) BUSCA 1 PRODUTO
-    $sqlBusca = "
-        SELECT D001E_Id, D001E_D001_Id, D001E_D001_Codigo_Produto
-        FROM D001E
-        WHERE (D001E_Id_Any IS NULL OR D001E_Id_Any = 0 OR D001E_Id_Any = '')
-        ORDER BY D001E_Id ASC
-        LIMIT 1
-    ";
+HTML, CSS
 
-    $rs = \mysqli_query($g['conexaoBanco'], $sqlBusca);
-    
-    if (!$rs || \mysqli_num_rows($rs) == 0) break;
+JavaScript ES5/ES6
 
-    $row     = \mysqli_fetch_assoc($rs);
-    $idTable = $row['D001E_Id'];
-    $idProd  = $row['D001E_D001_Id'];
-    $sku     = trim($row['D001E_D001_Codigo_Produto']);
+jQuery
 
-    if (empty($sku)) {
-        \mysqli_query($g['conexaoBanco'], "UPDATE D001E SET D001E_ult_att = NOW() WHERE D001E_Id = $idTable");
-        continue;
-    }
 
-    $idAnySku = 0;
-    $tituloSku = '';
-    $rateLimitExceeded = false;
 
-    try {
-        $endpoint = "/products?sku=" . urlencode($sku);
-        $resp = $apiManager->request($endpoint, 'GET', null, true, ['return_on_failure' => true]);
-        $reqCount++;
+Arquitetura do Sistema
 
-        if (isset($resp['body']) && is_string($resp['body']) && strpos($resp['body'], 'API rate limit exceeded') !== false) {
-            $rateLimitExceeded = true;
-        } elseif (isset($resp['code']) && $resp['code'] == 429) {
-            $rateLimitExceeded = true;
-        }
+Sistema legado
 
-        if ($rateLimitExceeded) {
-            sleep(30);
-            if(isset($g['conexaoBanco']) && $g['conexaoBanco'] instanceof \mysqli) @\mysqli_close($g['conexaoBanco']);
-            $g['conexaoBanco'] = null;
-            $reqCount--;
-            continue;
-        }
+Código já existente deve ser preservado
 
-        $bodyRaw = isset($resp['body']) ? $resp['body'] : null;
-        $body = is_array($bodyRaw) ? $bodyRaw : (json_decode($bodyRaw, true) ?: []);
+Alterações sempre incrementais, nunca reescrita total
 
-        // CAPTURA DO ID DO SKU E TITULO
-        if ($resp && isset($resp['code']) && $resp['code'] == 200 && !empty($body['content'][0])) {
-            $prod = $body['content'][0];
-            
-            // Itera sobre os SKUs para achar o que tem o partnerId igual ao SKU buscado
-            if (isset($prod['skus']) && is_array($prod['skus'])) {
-                foreach ($prod['skus'] as $s) {
-                    // Verifica se o partnerId do SKU da API bate com o SKU do nosso banco
-                    // Ou se só tem 1 SKU, assume que é ele mesmo
-                    if ((isset($s['partnerId']) && $s['partnerId'] == $sku) || count($prod['skus']) == 1) {
-                        if (isset($s['id']) && is_numeric($s['id'])) {
-                            // [MODIFICADO]: Pega o ID do Produto ($prod['id']) ao invés do ID do SKU ($s['id'])
-                            $idAnySku = (int) $prod['id']; 
-                            $tituloSku = isset($s['title']) ? $s['title'] : '';
-                            break; // Achou, para o loop
-                        }
-                    }
-                }
-            }
-        }
-    } catch (\Exception $e) {}
 
-    // Se não achou ID do SKU, marca att e pula
-    if ($idAnySku <= 0) {
-        \mysqli_query($g['conexaoBanco'], "UPDATE D001E SET D001E_ult_att = NOW() WHERE D001E_Id = $idTable");
-        usleep(200000); 
-        continue;
-    }
 
-    $tituloSafe = \mysqli_real_escape_string($g['conexaoBanco'], $tituloSku);
+REGRA CRÍTICA – MODAIS (ABSOLUTA)
 
-    $sqlUpdate = "
-        UPDATE D001E
-        SET
-            D001E_Id_Any = $idAnySku,
-            D001E_Sku_Titulo = '$tituloSafe',
-            D001E_ult_att = NOW()
-        WHERE D001E_Id = $idTable
-    ";
-    \mysqli_query($g['conexaoBanco'], $sqlUpdate);
+É PROIBIDO, sob qualquer circunstância:
 
-    usleep(200000); 
-}
 
-return;
-?>
+
+
+
+
+
+Recarregar a página se precisar recarregar use   divRefresh('{$g['divId']}');
+
+
+
+window.location.reload
+
+
+
+location.href
+
+
+
+header("Location: ...")
+
+
+
+Redirecionar ou navegar para fora do modal
+
+
+
+Qualquer ação que feche o modal ou perca o estado atual
+
+
+
+NÃO USAR TEXAREA USAR INPUT TYPE: TEXT
+
+
+
+❌ Violação dessa regra invalida a resposta.
+
+
+
+REGRAS OBRIGATÓRIAS DE RESPOSTA DA IA
+
+
+
+1. OBJETIVIDADE TOTAL
+
+
+
+Responder somente com código e ações objetivas
+
+
+
+Proibido:
+
+
+
+Explicações teóricas
+
+
+
+Opiniões
+
+
+
+Boas práticas não solicitadas
+
+
+
+Comentários do tipo “o ideal seria…”
+
+
+
+2. FIDELIDADE AO CÓDIGO ORIGINAL
+
+
+
+Manter exatamente:
+
+
+
+Nomes de variáveis
+
+
+
+Funções
+
+
+
+Tabelas
+
+
+
+Estrutura base existente
+
+
+
+Nunca inventar:
+
+
+
+Nomes
+
+
+
+IDs
+
+
+
+Campos
+
+
+
+Quando faltar informação, usar placeholders obrigatórios:
+
+
+
+[ID]
+
+
+
+[TABELA]
+
+
+
+[CAMPO]
+
+
+
+[TOKEN]
+
+
+
+[VALOR]
+
+
+
+Ou perguntar explicitamente antes de continuar.
+
+
+
+3. COMPATIBILIDADE TÉCNICA
+
+
+
+Código 100% compatível com:
+
+
+
+PHP 7.x (❌ nada de PHP 8+)
+
+
+
+MySQL 8.x
+
+
+
+Proibido:
+
+
+
+Funções depreciadas
+
+
+
+Tipagem moderna (match, named arguments, readonly, etc.)
+
+
+
+Features experimentais
+
+
+
+4. FORMATO DE RESPOSTA (PADRÃO RÍGIDO)
+
+
+
+A resposta DEVE seguir exatamente esta ordem:
+
+
+
+
+
+
+
+PASSO 1 — ALTERAÇÕES
+
+
+
+Lista curta e objetiva:
+
+
+
+
+
+
+
+SUBSTITUIR trecho X POR trecho Y
+
+
+
+ADICIONAR validação em [local]
+
+
+
+REMOVER chamada indevida em [linha]
+
+
+
+Sem explicações adicionais.
+
+
+
+
+
+
+
+PASSO 2 — CÓDIGO FINAL COMPLETO
+
+
+
+Código inteiro
+
+
+
+Pronto para copiar e colar
+
+
+
+Código original preservado
+
+
+
+Melhorias somente adicionadas, nunca resumidas
+
+
+
+Comentários apenas se já existirem no código original
+
+
+
+5. REGRA DE FALHA
+
+
+
+Se a solicitação for inviável técnica ou logicamente, responder somente:
+
+
+
+
+
+
+
+IMPOSSÍVEL POR: [motivo em uma única linha]
+
+
+
+Sem qualquer texto adicional.
+
+
+
+REGRA FINAL (CRÍTICA PARA IA)
+
+
+
+AO ESCREVER O CÓDIGO COMPLETO:
+
+
+
+Nunca reescrever do zero
+
+
+
+Nunca entregar versões resumidas
+
+
+
+Sempre partir do código original
+
+
+
+Apenas incrementar, corrigir ou ajustar
+
+
+
+Violação desta regra invalida a resposta.
