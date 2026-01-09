@@ -1,11 +1,12 @@
 <?php
 /*
- POPULADOR D001E - MASTER (BASEADO EM IMAGEM NULL)
+ POPULADOR D001E - MASTER (OTIMIZADO PARA RATE LIMIT)
  */
 namespace hardness;
 
 error_reporting(E_ALL & ~E_NOTICE);
 ini_set('display_errors', 1);
+set_time_limit(0);
 
 global $g, $confUsuario;
 
@@ -35,65 +36,63 @@ try {
     $gmpClass   = class_exists('hardness\GMP010') ? 'hardness\GMP010' : 'GMP010';
     $apiManager = new $gmpClass($baseUrl, $token, 3, [], 'error_log', $globalPathDados);
 } catch (\Exception $e) {
+    echo "ERRO API: " . $e->getMessage() . "\n";
     return;
 }
 
 // =============================================================================
-// 3) CONFIGURAÇÃO DO LOOP
+// 3) CONEXÃO ÚNICA COM BANCO
 // =============================================================================
-$reqCount    = 0;
-$maxRequests = 3000;
-$loteTamanho = 200;
-
-while (true) {
-    if ($reqCount >= $maxRequests) break;
-
-    // --- CONEXÃO ---
-    $precisaConectar = false;
-    if ($reqCount > 0 && $reqCount % $loteTamanho == 0) {
-        $precisaConectar = true;
-        sleep(10);
+if (!isset($g['conexaoBanco']) || !$g['conexaoBanco'] || !($g['conexaoBanco'] instanceof \mysqli)) {
+    $con = @\mysqli_connect($confUsuario['dbHost'], $confUsuario['dbUser'], $confUsuario['dbPass'], $confUsuario['dbDatabase']);
+    if (!$con) {
+        echo "ERRO: Sem conexão com banco.\n";
+        return;
     }
-    if (!isset($g['conexaoBanco']) || !$g['conexaoBanco'] || !($g['conexaoBanco'] instanceof \mysqli)) {
-        $precisaConectar = true;
-    } elseif (!@\mysqli_ping($g['conexaoBanco'])) {
-        $precisaConectar = true;
-    }
+    $g['conexaoBanco'] = $con;
+}
+$con = $g['conexaoBanco'];
 
-    if ($precisaConectar) {
-        if (isset($g['conexaoBanco']) && $g['conexaoBanco'] instanceof \mysqli) @\mysqli_close($g['conexaoBanco']);
-        $con = @\mysqli_connect($confUsuario['dbHost'], $confUsuario['dbUser'], $confUsuario['dbPass'], $confUsuario['dbDatabase']);
-        if ($con) {
-            $g['conexaoBanco'] = $con;
-        } else {
-            sleep(2);
-            continue;
-        }
-    }
+// =============================================================================
+// 4) CONFIGURAÇÃO DO RATE LIMIT (1.5s = ~40/minuto)
+// =============================================================================
+$delayEntreRequisicoes = 1500000; // 1.5 segundos em microsegundos
+$maxRequests = 40; // Limite por execução
+$contador = 0;
 
-    // =========================================================================
-    // 4) BUSCA E LEITURA DE DADOS
-    //    Condição: Apenas se D001E_Imagem_1 estiver vazia
-    // =========================================================================
-    $sqlBusca = "SELECT * FROM D001E
-                 WHERE (D001E_Imagem_1 IS NULL OR D001E_Imagem_1 = '')
+echo "INICIANDO POPULADOR D001E...\n";
+
+// =============================================================================
+// 5) LOOP PRINCIPAL
+// =============================================================================
+while ($contador < $maxRequests) {
+    // Busca próximo produto sem ID AnyMarket
+    $sqlBusca = "SELECT * FROM D001E 
+                 WHERE (D001E_Id_Any IS NULL OR D001E_Id_Any = '')
                  ORDER BY D001E_ult_att ASC 
                  LIMIT 1";
-
-    $rs = \mysqli_query($g['conexaoBanco'], $sqlBusca);
-    if (!$rs || \mysqli_num_rows($rs) == 0) break;
-
+    
+    $rs = \mysqli_query($con, $sqlBusca);
+    if (!$rs || \mysqli_num_rows($rs) == 0) {
+        echo "Nenhum produto pendente encontrado.\n";
+        break;
+    }
+    
     $atual   = \mysqli_fetch_assoc($rs);
     $idTable = (int)$atual['D001E_Id'];
     $idProd  = (int)$atual['D001E_D001_Id'];
     $sku     = trim($atual['D001E_D001_Codigo_Produto']);
-
+    
     if (empty($sku)) {
-        \mysqli_query($g['conexaoBanco'], "UPDATE D001E SET D001E_ult_att = NOW() WHERE D001E_Id = $idTable");
+        // Atualiza data e pula
+        \mysqli_query($con, "UPDATE D001E SET D001E_ult_att = NOW() WHERE D001E_Id = $idTable");
+        echo "[$contador] SKU vazio, pulando...\n";
         continue;
     }
-
-    // Variáveis para preenchimento
+    
+    echo "[$contador] Processando SKU: $sku... ";
+    
+    // Variáveis para armazenar dados da API
     $idAnySku    = 0;
     $tituloSku   = '';
     $titulo      = ''; 
@@ -107,121 +106,141 @@ while (true) {
     $largura     = ''; 
     $comprimento = '';
     
-    $rateLimitExceeded = false;
-
-    // --- API REQUEST ---
+    // =========================================================================
+    // 6) REQUISIÇÃO À API ANYMARKET
+    // =========================================================================
     try {
         $endpoint = "/products?sku=" . urlencode($sku);
-        $resp     = $apiManager->request($endpoint, 'GET', null, true, ['return_on_failure' => true]);
-        $reqCount++;
-
-        if (isset($resp['body']) && is_string($resp['body']) && strpos($resp['body'], 'API rate limit exceeded') !== false) {
-            $rateLimitExceeded = true;
-        } elseif (isset($resp['code']) && $resp['code'] == 429) {
-            $rateLimitExceeded = true;
-        }
-
-        if ($rateLimitExceeded) {
-            sleep(30);
-            if (isset($g['conexaoBanco']) && $g['conexaoBanco'] instanceof \mysqli) @\mysqli_close($g['conexaoBanco']);
-            $g['conexaoBanco'] = null;
-            $reqCount--;
+        $resp = $apiManager->request($endpoint, 'GET', null, true, ['return_on_failure' => true]);
+        $contador++;
+        
+        // Verificar rate limit
+        if (isset($resp['code']) && $resp['code'] == 429) {
+            echo "RATE LIMIT EXCEDIDO! Aguardando 60 segundos...\n";
+            sleep(60);
+            $contador--; // Não conta esta tentativa
             continue;
         }
-
-        $bodyRaw = isset($resp['body']) ? $resp['body'] : null;
-        $body    = is_array($bodyRaw) ? $bodyRaw : (json_decode($bodyRaw, true) ?: []);
-
-        // --- PARSE API ---
-        if ($resp && isset($resp['code']) && $resp['code'] == 200 && !empty($body['content'][0])) {
+        
+        $body = isset($resp['body']) ? (is_array($resp['body']) ? $resp['body'] : json_decode($resp['body'], true)) : [];
+        
+        // Processar resposta da API
+        if (isset($resp['code']) && $resp['code'] == 200 && !empty($body['content'][0])) {
             $d = $body['content'][0];
-
-            // 1. Dados Básicos do Produto
+            
+            // ID do produto
+            if (isset($d['id']) && is_numeric($d['id'])) {
+                $idAnySku = (int) $d['id'];
+            }
+            
+            // Dados básicos
             $titulo    = isset($d['title']) ? $d['title'] : '';
             $descricao = isset($d['description']) ? $d['description'] : '';
             
             // Marca
-            if (!empty($d['brand']['name'])) $marca = $d['brand']['name'];
-            elseif (!empty($d['brand']['reducedName'])) $marca = $d['brand']['reducedName'];
-            elseif (!empty($d['brand']['partnerId'])) $marca = $d['brand']['partnerId'];
-
-            // Specs
+            if (!empty($d['brand']['name'])) {
+                $marca = $d['brand']['name'];
+            } elseif (!empty($d['brand']['reducedName'])) {
+                $marca = $d['brand']['reducedName'];
+            } elseif (!empty($d['brand']['partnerId'])) {
+                $marca = $d['brand']['partnerId'];
+            }
+            
+            // Especificações
             $garantia    = isset($d['warrantyText']) ? $d['warrantyText'] : '';
             $peso        = isset($d['weight']) ? $d['weight'] : '';
             $altura      = isset($d['height']) ? $d['height'] : '';
             $largura     = isset($d['width']) ? $d['width'] : '';
             $comprimento = isset($d['length']) ? $d['length'] : '';
-
+            
             // Imagens
             if (!empty($d['images']) && is_array($d['images'])) {
                 foreach ($d['images'] as $img) {
-                    if (!empty($img['url'])) $imagens[] = $img['url'];
-                }
-            }
-
-            // 2. Dados do SKU (ID e EAN)
-            if (isset($d['skus']) && is_array($d['skus'])) {
-                if (!empty($d['skus'][0]['ean'])) $ean = $d['skus'][0]['ean'];
-                
-                foreach ($d['skus'] as $s) {
-                    if ((isset($s['partnerId']) && $s['partnerId'] == $sku) || count($d['skus']) == 1) {
-                        if (isset($s['id']) && is_numeric($s['id'])) {
-                            $idAnySku  = (int) $d['id']; // ID do Produto
-                            $tituloSku = isset($s['title']) ? $s['title'] : '';
-                        }
+                    if (!empty($img['url'])) {
+                        $imagens[] = $img['url'];
                     }
                 }
             }
+            
+            // SKU específico e EAN
+            if (!empty($d['skus']) && is_array($d['skus'])) {
+                foreach ($d['skus'] as $s) {
+                    if (isset($s['partnerId']) && $s['partnerId'] == $sku) {
+                        $tituloSku = isset($s['title']) ? $s['title'] : '';
+                    }
+                    if (!empty($s['ean']) && empty($ean)) {
+                        $ean = $s['ean'];
+                    }
+                }
+                // Se não achou pelo partnerId, pega o primeiro
+                if (empty($tituloSku) && !empty($d['skus'][0]['title'])) {
+                    $tituloSku = $d['skus'][0]['title'];
+                }
+            }
+            
+            echo "OK (ID Any: $idAnySku)\n";
+        } else {
+            echo "Não encontrado na API\n";
         }
-    } catch (\Exception $e) {}
-
-    // --- FALLBACK IMAGENS (LOCAL) ---
+    } catch (\Exception $e) {
+        echo "ERRO na requisição: " . $e->getMessage() . "\n";
+    }
+    
+    // =========================================================================
+    // 7) FALLBACK PARA DADOS LOCAIS
+    // =========================================================================
+    
+    // Fallback para imagens (T172)
     if (empty($imagens)) {
-        // T172
-        $r172 = \mysqli_query($g['conexaoBanco'], "SELECT T172_Id, T172_Nome_Arquivo FROM T172 WHERE T172_D001_Id = '$idProd' ORDER BY T172_Nome_Arquivo DESC");
+        $r172 = \mysqli_query($con, "SELECT T172_Id, T172_Nome_Arquivo FROM T172 WHERE T172_D001_Id = '$idProd' ORDER BY T172_Nome_Arquivo DESC");
         if ($r172) {
             while ($m = \mysqli_fetch_assoc($r172)) {
-                $ext    = pathinfo($m['T172_Nome_Arquivo'], PATHINFO_EXTENSION);
+                $ext = pathinfo($m['T172_Nome_Arquivo'], PATHINFO_EXTENSION);
                 $dbName = isset($confUsuario['dbDatabase']) ? $confUsuario['dbDatabase'] : 'e229';
                 $imagens[] = "/hardness3/dados_usuarios/{$dbName}/produtos/{$idProd}/fotos/{$m['T172_Id']}.$ext";
             }
         }
-        // T144
-        if (empty($imagens)) {
-            $r144 = \mysqli_query($g['conexaoBanco'], "SELECT T144_Url FROM T144 WHERE T144_D001_Id = '$idProd'");
-            if ($r144) {
-                while ($m = \mysqli_fetch_assoc($r144)) {
-                    if (!empty($m['T144_Url'])) $imagens[] = $m['T144_Url'];
+    }
+    
+    // Fallback para imagens (T144)
+    if (empty($imagens)) {
+        $r144 = \mysqli_query($con, "SELECT T144_Url FROM T144 WHERE T144_D001_Id = '$idProd'");
+        if ($r144) {
+            while ($m = \mysqli_fetch_assoc($r144)) {
+                if (!empty($m['T144_Url'])) {
+                    $imagens[] = $m['T144_Url'];
                 }
             }
         }
     }
-
-    // --- FALLBACK TEXTOS (D001) ---
+    
+    // Fallback para textos (D001)
     if (empty($titulo) || empty($descricao)) {
-        $rD = \mysqli_query($g['conexaoBanco'], "SELECT D001_Descricao FROM D001 WHERE D001_Id = '$idProd'");
+        $rD = \mysqli_query($con, "SELECT D001_Descricao FROM D001 WHERE D001_Id = '$idProd'");
         if ($rD && $r = \mysqli_fetch_assoc($rD)) {
-            if (empty($titulo))    $titulo    = $r['D001_Descricao'];
+            if (empty($titulo))    $titulo = $r['D001_Descricao'];
             if (empty($descricao)) $descricao = $r['D001_Descricao'];
         }
     }
-
-    // --- PREPARA UPDATE (DIFERENCIAL) ---
-    // Atualiza tudo que encontrar, pois a imagem estava vazia
+    
+    // =========================================================================
+    // 8) ATUALIZAÇÃO NO BANCO
+    // =========================================================================
     $sets = [];
-
-    // ID AnyMarket (Principal)
-    if ($idAnySku > 0 && $idAnySku != $atual['D001E_Id_Any']) {
+    
+    // ID AnyMarket
+    if ($idAnySku > 0) {
         $sets[] = "D001E_Id_Any = $idAnySku";
     }
-    // Titulo SKU
-    if (!empty($tituloSku) && $tituloSku !== $atual['D001E_Sku_Titulo']) {
-        $ts = \mysqli_real_escape_string($g['conexaoBanco'], $tituloSku);
+    
+    // Título do SKU
+    if (!empty($tituloSku)) {
+        $ts = \mysqli_real_escape_string($con, $tituloSku);
         $sets[] = "D001E_Sku_Titulo = '$ts'";
     }
-
-    // Campos de Conteúdo
-    $camposTexto = [
+    
+    // Demais campos
+    $campos = [
         'D001E_Titulo'      => $titulo,
         'D001E_Descricao'   => $descricao,
         'D001E_Marca'       => $marca,
@@ -232,35 +251,39 @@ while (true) {
         'D001E_largura'     => $largura,
         'D001E_comprimento' => $comprimento
     ];
-
-    foreach ($camposTexto as $col => $val) {
-        // Atualiza se o valor novo não for vazio e for diferente do atual
-        // OU se o atual estiver vazio, aceita qualquer coisa
+    
+    foreach ($campos as $col => $val) {
         if ($val !== $atual[$col]) {
-            $safeVal = \mysqli_real_escape_string($g['conexaoBanco'], $val);
-            $sets[]  = "$col = '$safeVal'";
+            $safeVal = \mysqli_real_escape_string($con, $val);
+            $sets[] = "$col = '$safeVal'";
         }
     }
-
-    // Imagens: aqui sobrescrevemos pois a condição de entrada foi "Imagem 1 vazia"
+    
+    // Imagens (máximo 10)
     $imgsFinal = array_slice($imagens, 0, 10);
     for ($i = 1; $i <= 10; $i++) {
-        $url = isset($imgsFinal[$i - 1]) ? \mysqli_real_escape_string($g['conexaoBanco'], $imgsFinal[$i - 1]) : '';
+        $url = isset($imgsFinal[$i - 1]) ? \mysqli_real_escape_string($con, $imgsFinal[$i - 1]) : '';
         $sets[] = "D001E_Imagem_$i = '$url'";
     }
-
-    // Atualiza data para mover para o fim da fila na ordenação ult_att
+    
+    // Sempre atualiza data
     $sets[] = "D001E_ult_att = NOW()";
-
+    
     if (!empty($sets)) {
         $sqlUpdate = "UPDATE D001E SET " . implode(', ', $sets) . " WHERE D001E_Id = $idTable";
-        \mysqli_query($g['conexaoBanco'], $sqlUpdate);
+        \mysqli_query($con, $sqlUpdate);
     } else {
-        // Se nada mudou, apenas atualiza a data para não pegar no próximo loop imediato
-        \mysqli_query($g['conexaoBanco'], "UPDATE D001E SET D001E_ult_att = NOW() WHERE D001E_Id = $idTable");
+        // Se não houve alterações, apenas atualiza data
+        \mysqli_query($con, "UPDATE D001E SET D001E_ult_att = NOW() WHERE D001E_Id = $idTable");
     }
-
-    usleep(200000);
+    
+    // =========================================================================
+    // 9) DELAY PARA RESPEITAR RATE LIMIT
+    // =========================================================================
+    if ($contador < $maxRequests) {
+        usleep($delayEntreRequisicoes);
+    }
 }
 
+echo "PROCESSO CONCLUÍDO. Requisições realizadas: $contador\n";
 return;

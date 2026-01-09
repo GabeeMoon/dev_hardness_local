@@ -1,6 +1,7 @@
 <?php
 /*
  PAINEL DE CORRECAO DE ANUNCIO (D001F) - 100% ISOLADO (SEM CONFLITO DE AJAX)
+ COM CORREÇÃO DE PERDA DE CONTEXTO (DIVROOT/DIVID)
  */
 namespace hardness;
 
@@ -14,6 +15,11 @@ ini_set('display_errors', 1);
 
 $qtdePorPagina = 150;
 $limit         = $qtdePorPagina;
+
+// --- [CORREÇÃO DE CONTEXTO - DIV ROOT E ID] ---
+// Lógica aplicada para persistir a hierarquia de janelas do ERP
+$gDivRoot = isset($g['divRoot']) && $g['divRoot'] != "" ? $g['divRoot'] : (isset($_POST['sys_divRoot']) ? $_POST['sys_divRoot'] : (isset($_POST['divIdRoot']) ? $_POST['divIdRoot'] : ''));
+$gDivId   = isset($g['divId']) && $g['divId'] != "" ? $g['divId'] : (isset($_POST['sys_divId']) ? $_POST['sys_divId'] : (isset($_POST['divId']) ? $_POST['divId'] : 'contentCor'));
 
 // --- [EMPRESA ATUAL] ---
 $C004_Id = isset($g['empresaAtual']) ? (int) $g['empresaAtual'] : 1;
@@ -30,6 +36,7 @@ $offset = ($page - 1) * $limit;
 
 $isAjax  = (isset($_POST['ajax']) && (int) $_POST['ajax'] === 1);
 $apiMode = 0;
+
 // =============================================================================
 // [HELPER] FORMATAÇÃO INTELIGENTE (TEXTO -> HTML)
 // =============================================================================
@@ -53,7 +60,9 @@ if (!function_exists('autoFormatHTMLMel')) {
 // [RENDER] FUNÇÃO DE LINHA EXCLUSIVA (D001F)
 // =============================================================================
 function renderCorrectionRowIsolado($row) {
+    // [IMPORTANTE] Globais recuperadas para manter hierarquia ao abrir janela
     global $gDivRoot, $gDivId;
+
     $id        = (int) $row['D001F_Id'];
     $marca     = isset($row['D001F_Marca']) ? $row['D001F_Marca'] : 'ND';
     $imgCapa   = $row['D001F_Imagem_1'] ?: "https://via.placeholder.com/100x100?text=Sem+Img";
@@ -103,7 +112,6 @@ function renderCorrectionRowIsolado($row) {
     $tagsHtml = "";
     if (!empty($row['D001F_tags'])) {
         $ids = explode(',', $row['D001F_tags']);
-        // CSS Inline para garantir que quebre linha (wrap) na tabela
         $tagsHtml = "<div style='display:flex; gap:4px; flex-wrap:wrap !important; margin-top:6px; width:100%; box-sizing:border-box;'>";
         foreach($ids as $tid) {
             $tid = (int)trim($tid);
@@ -114,15 +122,17 @@ function renderCorrectionRowIsolado($row) {
         }
         $tagsHtml .= "</div>";
     }
-    
-    $d001Id    = $row['D001F_D001_Id']; // Corrigido index
-    $jsForn = "abrirJanela(false, '{$gDivRoot}', '{$gDivId}', unique(), '', 'Anuncio', '/cad/cad002/content/form2/', '&acaoId=' + encodeURIComponent('{$d001Id}'), [700,400]); return false;";
+    $d001Id    = $row['D001F_D001_Id'];
+
+    // Monta JS com as globais seguras ($gDivRoot e $gDivId)
+    $jsForn = "abrirJanela(false, '{$gDivRoot}', '{$gDivId}', unique(), '', 'Produto', '/cad/cad002/content/form2/', '&acaoId=' + encodeURIComponent('{$d001Id}'), [700,400]); return false;";
 
     return "
     <div class='quality-row' id='row_cor_{$id}'>
         <div class='col-check'>
              <input type='checkbox' class='row-check' value='{$id}'>
         </div>
+        
         <div class='col-type'>$tipoHtml</div>
         <div class='thumb-box' onclick='abrirVisualizadorCor(\"$sku\")'>
             <img src='$imgCapa' alt='Capa'>
@@ -133,7 +143,7 @@ function renderCorrectionRowIsolado($row) {
             $tagsHtml
             <div class='prod-sub' style='margin-top:6px;'>
                 <span class='badge-any' title='ID AnyMarket' style='cursor:pointer' onclick='window.open(\"https://app.anymarket.com.br/app-js/products/edit/$idAny\", \"_blank\"); event.stopPropagation();'>Id Any: $idAny</span>
-                <span class='badge-sku' title='SKU Produto' href='#' onclick=\"{$jsForn}\"'>Sku: $sku</span>
+                <span class='badge-sku' title='SKU Produto' style='cursor:pointer' onclick=\"{$jsForn}\">Sku: $sku</span>
                 <span class='badge-brand' title='$marcaHtml'>Marca: $marcaHtml</span>
             </div>
         </div>
@@ -205,15 +215,15 @@ if ($isAjax) {
                     
                     if (!empty($body['content'][0])) {
                         $d = $body['content'][0];
-                        $titulo    = mysql_real_escape_string($d['title'] ?? '');
-                        $descricao = mysql_real_escape_string($d['description'] ?? '');
-                        $garantia  = mysql_real_escape_string($d['warrantyText'] ?? '');
-                        $peso      = mysql_real_escape_string($d['weight'] ?? '');
-                        $altura    = mysql_real_escape_string($d['height'] ?? '');
-                        $largura   = mysql_real_escape_string($d['width'] ?? '');
+                        $titulo      = mysql_real_escape_string($d['title'] ?? '');
+                        $descricao   = mysql_real_escape_string($d['description'] ?? '');
+                        $garantia    = mysql_real_escape_string($d['warrantyText'] ?? '');
+                        $peso        = mysql_real_escape_string($d['weight'] ?? '');
+                        $altura      = mysql_real_escape_string($d['height'] ?? '');
+                        $largura     = mysql_real_escape_string($d['width'] ?? '');
                         $comprimento = mysql_real_escape_string($d['length'] ?? '');
-                        $ean = !empty($d['skus'][0]) ? mysql_real_escape_string($d['skus'][0]['ean'] ?? '') : '';
-                        $marca = !empty($d['brand']['name']) ? mysql_real_escape_string($d['brand']['name']) : '';
+                        $ean         = !empty($d['skus'][0]) ? mysql_real_escape_string($d['skus'][0]['ean'] ?? '') : '';
+                        $marca       = !empty($d['brand']['name']) ? mysql_real_escape_string($d['brand']['name']) : '';
 
                         $sets = ["D001F_Titulo = '$titulo'", "D001F_Descricao = '$descricao'", "D001F_Marca = '$marca'", "D001F_EAN = '$ean'", "D001F_garantia = '$garantia'", "D001F_peso = '$peso'", "D001F_altura = '$altura'", "D001F_largura = '$largura'", "D001F_comprimento = '$comprimento'", "D001F_ult_att = NOW()"];
                         if (!empty($d['images']) && is_array($d['images'])) {
@@ -280,7 +290,6 @@ if ($isAjax) {
             if (!empty($postData['f_desc'])) { $w = getSmartWhereCor("T1.D001F_Descricao", $postData['f_desc'], 'text'); if($w) $where[] = $w; }
             if (!empty($postData['f_tipo'])) { $ft = cleanInputCor($postData['f_tipo']); $where[] = "T1.D001F_Tipo = '$ft'"; }
             
-            // [NOVO] FILTRO DE TAGS (FIND_IN_SET)
             if (!empty($postData['f_tags'])) { 
                 $ftg = (int)$postData['f_tags']; 
                 $where[] = "FIND_IN_SET('$ftg', T1.D001F_tags) > 0"; 
@@ -318,9 +327,7 @@ if ($isAjax) {
         if ($idF <= 0) { echo json_encode(['ok' => 0, 'msg' => 'ID inválido.']); exit; }
 
         $tit = cleanInputCor($_POST['titulo']);
-        // Formata HTML vindo do editor para garantir consistência
         $descRaw = $_POST['desc'];
-        // Opcional: autoFormatHTMLMel($descRaw) aqui se quiser forçar na edição
         $desc = mysql_real_escape_string($descRaw);
         
         $ean = cleanInputCor($_POST['ean']);
@@ -452,7 +459,6 @@ if ($isAjax) {
                         $newVal = trim($data[$csvKey]);
                         $oldVal = trim($curr[$dbKey]);
                         
-                        // [FIX] Converte Texto Plano para HTML se necessário
                         if ($csvKey == 'D001F_Descricao') {
                             $newVal = autoFormatHTMLMel($newVal);
                         }
@@ -460,7 +466,6 @@ if ($isAjax) {
                         if ($newVal != $oldVal) {
                             $fieldName = str_replace('D001F_', '', $csvKey);
                             if($csvKey == 'D001F_Descricao') {
-                                // [NOVO] Botão Único: Ver Alterações
                                 $safeOld = htmlspecialchars($oldVal, ENT_QUOTES); 
                                 $safeNew = htmlspecialchars($newVal, ENT_QUOTES);
                                 $displayHtml = "<button class='btn-diff-view' type='button' onclick='openDescriptionModal(`$safeOld`, `$safeNew`)'>Visualizar Alterações</button>";
@@ -474,12 +479,17 @@ if ($isAjax) {
                         }
                     }
                 }
-                if (count($diffs) > 0) {
+                
+                if (count($diffs) > 0 || !empty($data['D001F_Obs']) || !empty($data['D001F_tags'])) {
                     $payloadData = $data;
                     foreach($protectedFields as $pf) unset($payloadData[$pf]);
                     $payloadData['D001F_Id'] = $idF;
-                    $payloadData['D001F_Descricao'] = isset($data['D001F_Descricao']) ? autoFormatHTMLMel($data['D001F_Descricao']) : ''; // Salva formatado
+                    $payloadData['D001F_Descricao'] = isset($data['D001F_Descricao']) ? autoFormatHTMLMel($data['D001F_Descricao']) : '';
                     
+                    if(count($diffs) == 0) {
+                         $diffs[] = ['field' => 'Atualização', 'html' => 'Obs/Tags'];
+                    }
+
                     $changes[] = ['idF' => $idF, 'sku' => $sku, 'title' => $curr['D001E_Sku_Titulo'], 'diffs' => $diffs, 'newData' => $payloadData];
                 }
             }
@@ -524,7 +534,6 @@ if ($isAjax) {
             if ($idF <= 0) continue;
 
             $sets = [];
-            // MAPEIA CAMPOS DO CSV PARA D001F
             $map = [
                 'D001F_Titulo' => 'D001F_Titulo', 
                 'D001F_Descricao' => 'D001F_Descricao',
@@ -533,7 +542,9 @@ if ($isAjax) {
                 'D001F_peso' => 'D001F_peso', 
                 'D001F_altura' => 'D001F_altura',
                 'D001F_largura' => 'D001F_largura', 
-                'D001F_comprimento' => 'D001F_comprimento'
+                'D001F_comprimento' => 'D001F_comprimento',
+                'D001F_Obs' => 'D001F_Obs',   
+                'D001F_tags' => 'D001F_tags'  
             ];
             for($i=1;$i<=10;$i++) $map["D001F_Imagem_$i"] = "D001F_Imagem_$i";
 
@@ -559,19 +570,42 @@ if ($isAjax) {
 
     // [EXPORTAÇÃO CSV]
     if (isset($_POST['action']) && $_POST['action'] === 'export_csv_cor') {
+        if (ob_get_level()) ob_end_clean();
+        ini_set('display_errors', 0);
+        
         $whereStr = buildWhereCor($_POST);
         $sqlCsv = "SELECT T1.* FROM D001F AS T1 LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001F_D001_Id LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id) WHERE $whereStr GROUP BY T1.D001F_Id ORDER BY T1.D001F_Id ASC";
         $rsCsv = mysql_query($sqlCsv);
+        
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename=correcao_produtos_' . date('YmdHis') . '.csv');
         $out = fopen('php://output', 'w');
         fputs($out, "\xEF\xBB\xBF");
-        $header = ['D001F_Id','D001F_Tipo','D001F_Id_Any','D001F_D001_Id','D001F_D001_Codigo_Produto','D001F_Titulo','D001F_Marca','D001F_Descricao','D001F_Imagem_1','D001F_Imagem_2','D001F_Imagem_3','D001F_Imagem_4','D001F_Imagem_5','D001F_Imagem_6','D001F_Imagem_7','D001F_Imagem_8','D001F_Imagem_9','D001F_Imagem_10','D001F_EAN','D001F_garantia','D001F_peso','D001F_altura','D001F_largura','D001F_comprimento','D001F_ult_att'];
+        
+        $header = ['D001F_Id','D001F_Tipo','D001F_Id_Any','D001F_D001_Id','D001F_D001_Codigo_Produto','D001F_Titulo','D001F_Marca','D001F_Descricao','D001F_Obs','D001F_tags','D001F_Imagem_1','D001F_Imagem_2','D001F_Imagem_3','D001F_Imagem_4','D001F_Imagem_5','D001F_Imagem_6','D001F_Imagem_7','D001F_Imagem_8','D001F_Imagem_9','D001F_Imagem_10','D001F_EAN','D001F_garantia','D001F_peso','D001F_altura','D001F_largura','D001F_comprimento','D001F_ult_att'];
         fputcsv($out, $header, ';');
-        function cleanCSV($str) { if (is_null($str)) return ''; $str = str_replace(["\r\n", "\r", "\n", "\t"], ' ', $str); return trim($str); }
-        function excelSafe($val) { $val = cleanCSV($val); if(is_numeric($val) && strlen($val) > 8) return '="' . $val . '"'; return $val; }
+        
+        if (!function_exists('cleanCSV')) { function cleanCSV($str) { if (is_null($str)) return ''; $str = str_replace(["\r\n", "\r", "\n", "\t"], ' ', $str); return trim($str); } }
+        if (!function_exists('excelSafe')) { function excelSafe($val) { $val = cleanCSV($val); if(is_numeric($val) && strlen($val) > 8) return '="' . $val . '"'; return $val; } }
+        
         if ($rsCsv) { while ($row = mysql_fetch_assoc($rsCsv)) {
-            $line = [$row['D001F_Id'], $row['D001F_Tipo'], $row['D001F_Id_Any'], $row['D001F_D001_Id'], excelSafe($row['D001F_D001_Codigo_Produto']), cleanCSV($row['D001F_Titulo']), cleanCSV($row['D001F_Marca']), cleanCSV($row['D001F_Descricao']), $row['D001F_Imagem_1'],$row['D001F_Imagem_2'],$row['D001F_Imagem_3'],$row['D001F_Imagem_4'],$row['D001F_Imagem_5'],$row['D001F_Imagem_6'],$row['D001F_Imagem_7'],$row['D001F_Imagem_8'],$row['D001F_Imagem_9'],$row['D001F_Imagem_10'], excelSafe($row['D001F_EAN']), cleanCSV($row['D001F_garantia']), cleanCSV($row['D001F_peso']), cleanCSV($row['D001F_altura']), cleanCSV($row['D001F_largura']), cleanCSV($row['D001F_comprimento']), $row['D001F_ult_att']];
+            $line = [
+                $row['D001F_Id'], $row['D001F_Tipo'], $row['D001F_Id_Any'], $row['D001F_D001_Id'], 
+                excelSafe($row['D001F_D001_Codigo_Produto']), 
+                cleanCSV($row['D001F_Titulo']), 
+                cleanCSV($row['D001F_Marca']), 
+                cleanCSV($row['D001F_Descricao']), 
+                cleanCSV($row['D001F_Obs']), 
+                cleanCSV($row['D001F_tags']),
+                $row['D001F_Imagem_1'],$row['D001F_Imagem_2'],$row['D001F_Imagem_3'],$row['D001F_Imagem_4'],$row['D001F_Imagem_5'],$row['D001F_Imagem_6'],$row['D001F_Imagem_7'],$row['D001F_Imagem_8'],$row['D001F_Imagem_9'],$row['D001F_Imagem_10'], 
+                excelSafe($row['D001F_EAN']), 
+                cleanCSV($row['D001F_garantia']), 
+                cleanCSV($row['D001F_peso']), 
+                cleanCSV($row['D001F_altura']), 
+                cleanCSV($row['D001F_largura']), 
+                cleanCSV($row['D001F_comprimento']), 
+                $row['D001F_ult_att']
+            ];
             fputcsv($out, $line, ';');
         }}
         fclose($out);
@@ -628,6 +662,7 @@ $style = <<<STYLE
     * { box-sizing: border-box; }
     body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: var(--bg-body); margin: 0; padding: 20px; color: var(--text-main); -webkit-font-smoothing: antialiased; }
     .quality-list { max-width: 1600px; margin: 0 auto; position: relative; }
+    
     .filter-container { background: var(--bg-card); border-radius: 12px; box-shadow: var(--shadow-md); margin-bottom: 24px; max-width: 1600px; margin: 0 auto 24px auto; border: 1px solid var(--border); overflow: hidden; }
     .filter-header { padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; background: #fff; border-bottom: 1px solid transparent; transition: background 0.2s; }
     .filter-header:hover { background: #f9fafb; }
@@ -641,13 +676,21 @@ $style = <<<STYLE
     .f-input { padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; outline: none; transition: all 0.2s; width: 100%; color: #374151; background: #f9fafb; }
     .f-input:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(0, 152, 211, 0.1); }
     .f-actions { display: flex; justify-content: flex-end; margin-top: 20px; padding-top: 15px; border-top: 1px solid #f3f4f6; gap: 12px; flex-wrap: wrap; }
-    .f-btn-apply, .f-btn-export, .f-btn-import, .f-btn-clear, .f-btn-finish-massa { border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:8px; transition: all 0.2s; shadow: var(--shadow-sm); }
+    
+    .f-btn-apply, .f-btn-export, .f-btn-import, .f-btn-clear, .f-btn-sync-massa, .f-btn-finish-massa { border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:8px; transition: all 0.2s; shadow: var(--shadow-sm); }
     .f-btn-apply { background: var(--primary); color: #fff; } .f-btn-apply:hover { background: var(--primary-hover); transform: translateY(-1px); }
     .f-btn-export { background: #fff; color: #374151; border: 1px solid #d1d5db; } .f-btn-export:hover { background: #f3f4f6; border-color: #9ca3af; }
     .f-btn-import { background: #10b981; color: #fff; } .f-btn-import:hover { background: #059669; transform: translateY(-1px); }
     .f-btn-clear { background: #ef4444; color: #fff; } .f-btn-clear:hover { background: #dc2626; transform: translateY(-1px); }
-    .f-btn-finish-massa { background: #10b981; color: #fff; } .f-btn-finish-massa:hover { background: #059669; transform: translateY(-1px); }
+    .f-btn-sync-massa { background: #f59e0b; color: #fff; } .f-btn-sync-massa:hover { background: #d97706; transform: translateY(-1px); }
     
+    /* [NOVO] PAGINAÇÃO CORRIGIDA - IGUAL MELHORIA */
+    #demoCor { padding: 20px 0; display:none; flex-wrap:wrap; align-items:center; justify-content:center; gap:5px; }
+    #demoCor.active { display: flex; }
+    #demoCor .pg-btn { border: 1px solid #d1d5db; background:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; color:#374151; text-decoration: none; }
+    #demoCor .pg-btn:hover { background: #f3f4f6; }
+    #demoCor .pg-btn.active { background: var(--primary); border-color: var(--primary); color:#fff; }
+
     .quality-header, .quality-row { display: grid; grid-template-columns: 30px 90px 70px 1.5fr 1fr 1fr 1.2fr 1fr 100px; gap: 12px; align-items: center; }
     .quality-header { position: sticky; top: 0; z-index: 100; padding: 12px 16px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; background: #F3F4F6; border-bottom: 2px solid #e5e7eb; margin-bottom: 5px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); align-items:center; }
     .quality-header > div { text-align: center; } .quality-header > div:nth-child(4) { text-align: left; }
@@ -667,20 +710,20 @@ $style = <<<STYLE
     .badge-sku { font-size: 10px; color: #4b5563; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: 'Monaco', monospace; border: 1px solid #e5e7eb; }
     .badge-brand {font-size: 10px; color: #374151; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; border: 1px solid #d1d5db;font-weight: 700;}
     .badge-any { font-size: 10px; color: #fff; background: #FF600F; padding: 2px 6px; border-radius: 4px; font-family: monospace; border: 1px solid #e65100; font-weight: 700; }
-    .col-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; background: #f9fafb; padding: 6px 4px; border-radius: 6px; border: 1px solid #f3f4f6; align-self: center; }
-    .metric-item { display: flex; justify-content: space-between; align-items: center; font-size: 11px; }
-    .m-lbl { color: #9ca3af; font-size: 9px; font-weight: 700; text-transform: uppercase; }
-    .m-val { color: #374151; font-weight: 600; }
+    .metric-item { display: flex; grid-template-columns: 1fr 1fr; gap: 4px 10px; background: #f9fafb; padding: 6px 10px; border-radius: 6px; border: 1px solid #f3f4f6; align-self: center; justify-content: space-between; align-items: center; font-size: 11px; padding-top: 10px; padding-bottom: 10px;}
+    .m-lbl { color: #9ca3af; font-size: 11px; font-weight: 600; text-transform: uppercase; margin-right: 50px; }
+    .m-val { color: #374151; }
     .m-val.text-blue { color: var(--primary); }
     .col-box-scroll { font-size: 11px; color: #4b5563; max-height: 70px; overflow-y: auto; background: #fff; padding: 4px 6px; line-height: 1.5; border-radius: 6px; border: 1px solid #f3f4f6; text-align: left; }
     .content-spec { max-height: none !important; height: auto !important; overflow: visible !important; display: flex; flex-direction: column; justify-content: center; }
     .content-spec span { display: block; border-bottom: 1px solid #f9fafb; padding: 2px 0; }
-    .content-desc { max-height: 80px; overflow-y: auto; }
+    .content-desc { min-height: 150px; overflow-y: auto; }
     .col-box-scroll::-webkit-scrollbar { width: 4px; } .col-box-scroll::-webkit-scrollbar-track { background: #f1f1f1; } .col-box-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
     .col-actions { display: flex; justify-content: center; gap: 6px; align-items: center; }
     .btn-action-icon { background: transparent; border: 1px solid #e5e7eb; color: #6b7280; width: 32px; height: 32px; border-radius: 6px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
     .btn-action-icon:hover { background: #fffbeb; color: #d97706; border-color: #fcd34d; transform: scale(1.05); }
     .btn-edit:hover { background: #e0f2fe; color: #0098D3; border-color: #0098D3; }
+    .btn-sync:hover { background: #fff7ed; color: #f59e0b; border-color: #f59e0b; }
     .btn-finish:hover { background: #f0fdf4; color: #16a34a; border-color: #16a34a; }
 
     /* Modal EDITOR */
@@ -800,7 +843,7 @@ $style = <<<STYLE
     .close-modal { font-size: 24px; cursor: pointer; transition: 0.2s; color: #9ca3af; display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%; } 
     .close-modal:hover { color: #1f2937; background:#f3f4f6; }
     
-    @media (max-width: 1400px) { .quality-header, .quality-row { grid-template-columns: 30px 90px 70px 1.5fr 1fr 1fr 1.2fr 1fr 100px; gap: 8px; } }
+    @media (max-width: 1400px) { .quality-header, .quality-row { grid-template-columns: 30px 90px 70px 1.5fr 1fr 1.2fr 1fr 100px; gap: 8px; } }
     @media (max-width: 1200px) { 
         .quality-header { display: none; }
         .quality-row { grid-template-columns: 70px 1fr 1fr; grid-template-areas: "thumb info info" "thumb metrics metrics" "desc desc desc" "spec spec spec" "action action action"; gap: 10px; height: auto !important; }
@@ -833,13 +876,6 @@ $style = <<<STYLE
         overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); 
     }
 
-    /* --- [PAGINAÇÃO CORRIGIDA - IGUAL MELHORIA] --- */
-    #demoCor { padding: 20px 0; display:none; flex-wrap:wrap; align-items:center; justify-content:center; gap:5px; }
-    #demoCor.active { display: flex; }
-    #demoCor .pg-btn { border: 1px solid #d1d5db; background:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; color:#374151; text-decoration: none; }
-    #demoCor .pg-btn:hover { background: #f3f4f6; }
-    #demoCor .pg-btn.active { background: var(--primary); border-color: var(--primary); color:#fff; }
-
 </style>
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 STYLE;
@@ -864,14 +900,15 @@ echo "
             <div class='f-group'><label class='f-label'>Est. Tabela</label><input type='text' id='cor_est_tab' class='f-input'></div>
             <div class='f-group'><label class='f-label'>Frequência</label><input type='text' id='cor_freq' class='f-input'></div>
             <div class='f-group'><label class='f-label'>Custo</label><input type='text' id='cor_custo' class='f-input'></div>
+            
             <div class='f-group'><label class='f-label'>Tags</label><select id='cor_tags' class='f-input'><option value=''>Todas</option><option value='1'>Imagem</option><option value='2'>Título</option><option value='3'>Descrição</option><option value='4'>Pesos e Dimensão</option><option value='5'>Match</option><option value='6'>Voltagem</option><option value='7'>Cor</option></select></div>
         </div>
         <div class='f-actions'>
-            <button class='f-btn-apply' onclick='applyFiltersCor()'><i class='material-icons'>search</i> Aplicar Filtros</button>
-            <button class='f-btn-clear' onclick='clearFiltersCor()'><i class='material-icons'>backspace</i> Limpar</button>
-            <button class='f-btn-finish-massa' onclick='finalizarCorrecaoMassa()'><i class='material-icons'>done_all</i> Finalizar Selecionados</button>
-            <button class='f-btn-export' onclick='exportCSVCor()'><i class='material-icons'>file_download</i> Exportar CSV</button>
-            <button class='f-btn-import' onclick='triggerImportCor()'><i class='material-icons'>upload_file</i> Importar CSV</button>
+            <button class='f-btn-apply' onclick='applyFiltersCor()' title='Aplicar Filtros'><i class='material-icons'>search</i></button>
+            <button class='f-btn-clear' onclick='clearFiltersCor()' title='Limpar'><i class='material-icons'>backspace</i></button>
+            <button class='f-btn-sync-massa' onclick='syncAnyMarketMassa()' title='Atualizar Selecionados'><i class='material-icons'>sync</i></button>
+            <button class='f-btn-export' onclick='exportCSVCor()' title='Exportar CSV'><i class='material-icons'>file_download</i></button>
+            <button class='f-btn-import' onclick='triggerImportCor()' title='Importar CSV'><i class='material-icons'>upload_file</i></button>
             <input type='file' id='fileImportCor' style='display:none' accept='.csv' onchange='processFileCor(this)'>
         </div>
     </div>
@@ -885,12 +922,15 @@ echo "<div class='quality-header'>
 echo "<div id='contentCor'><div class='start-msg' style='text-align:center; padding:50px; color:#9ca3af;'><i class='material-icons' style='font-size:48px; margin-bottom:10px; display:block;'>search</i><h2 style='font-size:18px; margin:0;'>Comece sua análise</h2><p>Utilize os filtros acima para carregar os produtos.</p></div></div>";
 
 $ajaxUrl  = isset($_SERVER['REQUEST_URI']) ? htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES, 'UTF-8') : '';
-$sysDivId = isset($g['divId']) ? $g['divId'] : 'contentCor';
+// sysDivId não pode ser fixo aqui se veio de fora, mas o default serve
+$sysDivId = isset($g['divId']) && $g['divId'] != "" ? $g['divId'] : 'contentCor';
 
 echo "<input type='hidden' id='hardness_total_cor' value='0'>";
 echo "<input type='hidden' id='hardness_pageSize_cor' value='" . (int) $limit . "'>";
 echo "<input type='hidden' id='hardness_ajaxUrl_cor' value='" . $ajaxUrl . "'>";
-echo "<input type='hidden' id='sys_base_divId_cor' value='" . $sysDivId . "'>";
+// [CORREÇÃO] OUTPUT DOS HIDDEN INPUTS DE CONTEXTO
+echo "<input type='hidden' id='sys_base_divRoot_cor' value='" . $gDivRoot . "'>";
+echo "<input type='hidden' id='sys_base_divId_cor' value='" . $gDivId . "'>";
 echo "<div id='demoCor'></div></div>";
 ?>
 
@@ -912,7 +952,7 @@ echo "<div id='demoCor'></div></div>";
     <div class="h-modal-content">
         <div class="h-modal-header">
             <div class="h-header-left">
-                <div class="h-modal-title"><i class="material-icons" style="color:var(--primary)">edit_note</i> Editor de Anúncio: <span id="headerSkuDisplay">--</span> </div>
+                <div class="h-modal-title"><i class="material-icons" style="color:var(--primary)">edit_note</i> Editor de Anúncio</div>
                 
                 <div class="h-tags-wrapper">
                     <input type="hidden" id="editTags">
@@ -1012,7 +1052,7 @@ echo "<div id='demoCor'></div></div>";
         <div style="margin-bottom:15px; color:#f59e0b;"><i class="material-icons" style="font-size:36px">info</i></div>
         <h2 id="hAlertTitle" style="font-size:18px; font-weight:800; color:#111827; margin:0 0 10px 0;">Aviso</h2>
         <p id="hAlertMsg" style="font-size:14px; color:#4b5563; margin-bottom:25px; line-height:1.5;"></p>
-        <button class="h-btn h-btn-save" style="justify-content:center; width:100%; background:#10b981; color:#fff; border:none; padding:10px; border-radius:8px; cursor:pointer;" onclick="closeHAlert()">OK, Entendi</button>
+        <button class="h-btn h-btn-save" style="justify-content:center; width:100%;" onclick="closeHAlert()">OK, Entendi</button>
     </div>
 </div>
 
@@ -1022,8 +1062,8 @@ echo "<div id='demoCor'></div></div>";
         <h2 id="hConfirmTitle" style="font-size:18px; font-weight:800; color:#111827; margin:0 0 10px 0;">Confirmação</h2>
         <p id="hConfirmMsg" style="font-size:14px; color:#4b5563; margin-bottom:25px; line-height:1.5;"></p>
         <div style="display:flex; gap:12px; justify-content:center; width:100%;">
-            <button class="h-btn h-btn-cancel" style="justify-content:center; flex:1; background:#fff; border:1px solid #d1d5db; padding:10px; border-radius:8px; cursor:pointer;" onclick="closeHConfirm()">Cancelar</button>
-            <button id="btnHConfirmAction" class="h-btn h-btn-save" style="justify-content:center; flex:1; background:#10b981; color:#fff; border:none; padding:10px; border-radius:8px; cursor:pointer;">Confirmar</button>
+            <button class="h-btn h-btn-cancel" style="justify-content:center; flex:1;" onclick="closeHConfirm()">Cancelar</button>
+            <button id="btnHConfirmAction" class="h-btn h-btn-save" style="justify-content:center; flex:1;">Confirmar</button>
         </div>
     </div>
 </div>
@@ -1046,8 +1086,30 @@ echo "<div id='demoCor'></div></div>";
         jQuery('.row-check').prop('checked', allSelectedCor);
     }
 
-    // --- FINALIZAÇÃO EM MASSA ---
-    function finalizarCorrecaoMassa() {
+    // --- SINCRONIZAÇÃO ANYMARKET ---
+    function syncAnyMarketItem(id) {
+        showHConfirm('Atualizar Any', 'Deseja buscar os dados mais recentes deste item na AnyMarket?', function() {
+            var url = jQuery('#hardness_ajaxUrl_cor').val();
+            var sysId = jQuery('#sys_base_divId_cor').val();
+            // [CORREÇÃO] Recuperando e passando o contexto correto
+            var sysRoot = jQuery('#sys_base_divRoot_cor').val();
+
+            if (sysId) jQuery('#' + sysId).showLoading();
+
+            jQuery.ajax({
+                url: url, type: 'POST', dataType: 'json',
+                data: { ajax: 1, action: 'sync_anymarket_item', id: id, sys_divRoot: sysRoot, sys_divId: sysId },
+                success: function(res) {
+                    if (res.ok) { showHAlert('Sucesso', res.msg); appCor.loadData(1); } 
+                    else { showHAlert('Erro', res.msg); }
+                },
+                error: function() { showHAlert('Erro', 'Erro de comunicação.'); },
+                complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); }
+            });
+        });
+    }
+
+    function syncAnyMarketMassa() {
         var checked = jQuery('.row-check:checked');
         if (checked.length === 0) { showHAlert('Aviso', 'Selecione pelo menos um item.'); return; }
         if (checked.length > 40) { showHAlert('Aviso', 'Selecione no máximo 40 itens por vez.'); return; }
@@ -1055,7 +1117,7 @@ echo "<div id='demoCor'></div></div>";
         var ids = [];
         checked.each(function() { ids.push(jQuery(this).val()); });
 
-        showHConfirm('Finalizar em Massa', 'Deseja FINALIZAR os ' + ids.length + ' itens selecionados? Isso atualizará os produtos originais e os removerá da lista.', function() {
+        showHConfirm('Atualizar em Massa', 'Deseja sincronizar os ' + ids.length + ' itens selecionados com a AnyMarket?', function() {
             // Abre Modal Progresso
             jQuery('#modalProgress').fadeIn(200).css('display', 'flex');
             
@@ -1063,24 +1125,28 @@ echo "<div id='demoCor'></div></div>";
             var current = 0;
             var successes = 0;
             var errors = 0;
+            
+            // [CORREÇÃO] Variáveis de contexto para massa
+            var url = jQuery('#hardness_ajaxUrl_cor').val();
+            var sysId = jQuery('#sys_base_divId_cor').val();
+            var sysRoot = jQuery('#sys_base_divRoot_cor').val();
 
             function processQueue() {
                 if (ids.length === 0) {
                     // Fim
                     setTimeout(function(){
-                          jQuery('#modalProgress').fadeOut(200);
-                          showHAlert('Concluído', 'Processo finalizado. Sucessos: ' + successes + ', Erros: ' + errors);
-                          appCor.loadData(1);
+                         jQuery('#modalProgress').fadeOut(200);
+                         showHAlert('Concluído', 'Processo finalizado. Sucessos: ' + successes + ', Erros: ' + errors);
+                         appCor.loadData(1);
                     }, 500);
                     return;
                 }
 
                 var id = ids.shift(); // Pega o próximo
-                var url = jQuery('#hardness_ajaxUrl_cor').val();
 
                 jQuery.ajax({
                     url: url, type: 'POST', dataType: 'json',
-                    data: { ajax: 1, action: 'finalize_cor', id: id }, // Reusa a ação individual
+                    data: { ajax: 1, action: 'sync_anymarket_item', id: id, sys_divRoot: sysRoot, sys_divId: sysId }, // Reusa a ação individual com contexto
                     success: function(res) {
                         if(res.ok) successes++; else errors++;
                     },
@@ -1099,14 +1165,13 @@ echo "<div id='demoCor'></div></div>";
         });
     }
 
-    // --- RESTO DO SCRIPT (FILTER CACHE, EDITOR, ETC) MANTIDO INTEGRALMENTE ---
     function toggleFilterBodyCor() {
         var b = document.getElementById('filterBodyCor');
         var c = document.getElementById('filterChevronCor');
         if (b.classList.contains('closed')) { b.classList.remove('closed'); c.style.transform = 'rotate(0deg)'; } else { b.classList.add('closed'); c.style.transform = 'rotate(-90deg)'; }
     }
     
-    // --- [PAGINAÇÃO CORRIGIDA - IGUAL MELHORIA] ---
+    // [PAGINAÇÃO CORRIGIDA] - Usa o estilo < e >
     var pagerCor = {
         render: function(targetId, total, current, size, callbackName) {
             var $t = jQuery('#' + targetId); var pages = Math.ceil(total / size);
@@ -1132,13 +1197,18 @@ echo "<div id='demoCor'></div></div>";
             var pageSizeVal = jQuery('#hardness_pageSize_cor').val();
             var urlVal      = jQuery('#hardness_ajaxUrl_cor').val();
             var sysIdVal    = jQuery('#sys_base_divId_cor').val();
+            // [CORREÇÃO] Recuperando root para round-trip
+            var sysRootVal  = jQuery('#sys_base_divRoot_cor').val();
+
             p = parseInt(p, 10) || 1; 
             var filters = this.getFilters(); 
             var size = parseInt(pageSizeVal, 10) || 50; 
             if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
+            
+            // [CORREÇÃO] Passando sys_divRoot e sys_divId no payload
             jQuery.ajax({ 
                 url: urlVal, type: 'POST', dataType: 'json', 
-                data: jQuery.extend({ ajax: 1, page: p, pageSize: size }, filters), 
+                data: jQuery.extend({ ajax: 1, page: p, pageSize: size, sys_divRoot: sysRootVal, sys_divId: sysIdVal }, filters), 
                 success: function (r) { 
                     if (r && r.ok) { jQuery('#contentCor').html(r.html); pagerCor.render('demoCor', r.total, p, size, 'appCor.loadData'); } else { jQuery('#contentCor').html('<div class="start-msg" style="text-align:center;padding:40px;color:#999">Nenhum resultado encontrado.</div>'); jQuery('#demoCor').removeClass('active').html(''); } 
                 }, 
@@ -1150,16 +1220,51 @@ echo "<div id='demoCor'></div></div>";
     function saveFiltersCor() { var filters = appCor.getFilters(); localStorage.setItem('cached_filters_cor', JSON.stringify(filters)); }
     function loadFiltersCor() { var cached = localStorage.getItem('cached_filters_cor'); if (cached) { var filters = JSON.parse(cached); jQuery('#cor_sku').val(filters.f_sku); jQuery('#f_id_any_cor').val(filters.f_id_any); jQuery('#cor_tit').val(filters.f_tit); jQuery('#cor_mar').val(filters.f_mar); jQuery('#cor_tipo').val(filters.f_tipo); jQuery('#cor_desc').val(filters.f_desc); jQuery('#cor_spec').val(filters.f_spec); jQuery('#cor_est_liq').val(filters.f_est_liq); jQuery('#cor_est_tab').val(filters.f_est_tab); jQuery('#cor_freq').val(filters.f_freq); jQuery('#cor_custo').val(filters.f_custo); jQuery('#cor_tags').val(filters.f_tags); var hasValue = false; for(var key in filters) { if(filters[key]) { hasValue = true; break; } } if(hasValue) appCor.loadData(1); } }
     function applyFiltersCor() { saveFiltersCor(); appCor.loadData(1); }
+    // EXPORTAR CSV
+    function exportCSVCor() {
+        var filters = appCor.getFilters(); 
+        var url = jQuery('#hardness_ajaxUrl_cor').val();
+        var form = document.createElement('form'); form.method = 'POST'; form.action = url; form.target = '_blank';
+        var i1 = document.createElement('input'); i1.name = 'ajax'; i1.value = '1'; form.appendChild(i1);
+        var i2 = document.createElement('input'); i2.name = 'action'; i2.value = 'export_csv_cor'; form.appendChild(i2);
+        for (var key in filters) { if (filters.hasOwnProperty(key)) { var inp = document.createElement('input'); inp.name = key; inp.value = filters[key]; form.appendChild(inp); } }
+        document.body.appendChild(form); form.submit(); document.body.removeChild(form);
+    }
     function clearFiltersCor() { jQuery('#filterBodyCor input').val(''); jQuery('#filterBodyCor select').val(''); localStorage.removeItem('cached_filters_cor'); }
 
-    // [MODAIS HANDLERS...]
+    // [MODAIS ALERT/CONFIRM HANDLERS...]
+    let currentConfirmCallback = null;
+    function showHAlert(title, msg) { document.getElementById('hAlertTitle').innerText = title; document.getElementById('hAlertMsg').innerText = msg; jQuery('#hModalAlert').fadeIn(200).css('display', 'flex'); }
+    function closeHAlert() { jQuery('#hModalAlert').fadeOut(200); }
+    function showHConfirm(title, msg, callback) { document.getElementById('hConfirmTitle').innerText = title; document.getElementById('hConfirmMsg').innerText = msg; currentConfirmCallback = callback; jQuery('#hModalConfirm').fadeIn(200).css('display', 'flex'); }
+    function closeHConfirm() { jQuery('#hModalConfirm').fadeOut(200); currentConfirmCallback = null; }
+    document.getElementById('btnHConfirmAction').onclick = function() { if (currentConfirmCallback) currentConfirmCallback(); closeHConfirm(); };
+
     function triggerImportCor() { jQuery('#fileImportCor').click(); }
     function processFileCor(input) { if(input.files && input.files[0]) { var url = jQuery('#hardness_ajaxUrl_cor').val(); var sysId = jQuery('#sys_base_divId_cor').val(); var fd = new FormData(); fd.append('ajax', 1); fd.append('action', 'parse_import_csv_cor'); fd.append('csv_file', input.files[0]); if(sysId) jQuery('#'+sysId).showLoading(); jQuery.ajax({ url: url, type: 'POST', data: fd, contentType: false, processData: false, dataType: 'json', success: function(res) { if(res.ok) { jQuery('#triageBodyCor').html(res.html); jQuery('#modalImportCor').fadeIn(200).css('display', 'flex'); } else { showHAlert('Erro', res.msg); } input.value = ''; }, error: function() { showHAlert('Erro', 'Erro ao processar arquivo.'); input.value = ''; }, complete: function() { if(sysId) jQuery('#'+sysId).hideLoading(); } }); } }
     function openHtmlModal(htmlContent) { jQuery('#diffFieldTitle').text('Visualização do Novo Layout'); jQuery('#diffModalContent').html('<div class="diff-container-box"><div class="diff-box-head" style="color:#15803d;">Novo Conteúdo Renderizado (Como ficará no site)</div><div class="diff-box-body">' + htmlContent + '</div></div>'); jQuery('#diffModal').fadeIn(200).css('display', 'flex'); }
     function openDescriptionModal(oldText, newText) { jQuery('#diffFieldTitle').text('Visualização de Alterações (Descrição)'); var oldWords = oldText.split(/\s+/); var newWords = newText.split(/\s+/); var outputHtml = ''; var oldSet = new Set(oldWords); newWords.forEach(function(word) { if (!oldSet.has(word)) { outputHtml += '<span class="diff-word-added">' + word + '</span> '; } else { outputHtml += word + ' '; } }); jQuery('#diffModalContent').html('<div class="diff-container-box"><div class="diff-box-head" style="color:#15803d;">Novo Conteúdo (Alterações em Verde)</div><div class="diff-box-body" style="white-space: pre-wrap;">' + outputHtml + '</div></div>'); jQuery('#diffModal').fadeIn(200).css('display', 'flex'); }
     function openDiffModal(field, oldVal, newVal) { jQuery('#diffFieldTitle').text('Comparativo: ' + field); var oldArr = oldVal.split(' '); var newArr = newVal.split(' '); var diffHtml = ''; newArr.forEach(function(word){ if(oldVal.indexOf(word) === -1) diffHtml += '<span class="diff-word-added">'+word+'</span> '; else diffHtml += word + ' '; }); var oldHtml = ''; oldArr.forEach(function(word){ if(newVal.indexOf(word) === -1) oldHtml += '<span class="diff-word-removed">'+word+'</span> '; else oldHtml += word + ' '; }); jQuery('#diffModalContent').html('<div class="diff-container-box" style="margin-bottom:15px;"><div class="diff-box-head" style="color:#b91c1c;">Original</div><div class="diff-box-body">' + oldHtml + '</div></div><div class="diff-container-box"><div class="diff-box-head" style="color:#15803d;">Novo (Alterações destacadas)</div><div class="diff-box-body">' + diffHtml + '</div></div>'); jQuery('#diffModal').fadeIn(200).css('display', 'flex'); }
     function confirmImportCor() { var rows = []; jQuery('.triage-check-input:checked').each(function() { var idx = jQuery(this).val(); var payload = jQuery('#payload_' + idx).val(); if(payload) rows.push(payload); }); if(rows.length === 0) { showHAlert('Atenção', 'Selecione pelo menos um item para importar.'); return; } showHConfirm('Importar', 'Confirma a atualização de ' + rows.length + ' itens?', function() { var url = jQuery('#hardness_ajaxUrl_cor').val(); var sysId = jQuery('#sys_base_divId_cor').val(); if(sysId) jQuery('#'+sysId).showLoading(); jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'apply_import_batch_cor', rows: rows }, success: function(res) { if(res.ok) { jQuery('#modalImportCor').fadeOut(200); showHAlert('Sucesso', res.msg); appCor.loadData(1); } else { showHAlert('Erro', res.msg); } }, complete: function() { if(sysId) jQuery('#'+sysId).hideLoading(); } }); }); }
-    function abrirEditorCor(id) { var url = jQuery('#hardness_ajaxUrl_cor').val(); var sysId = jQuery('#sys_base_divId_cor').val(); if (sysId) jQuery('#' + sysId).showLoading(); jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'get_edit_data_cor', id: id }, success: function(res) { if(res.ok) { var d = res.data; jQuery('#editIdCor').val(d.D001F_Id); jQuery('#editSkuCor').val(d.D001F_D001_Codigo_Produto); jQuery('#headerSkuDisplay').text(d.D001F_D001_Codigo_Produto); jQuery('#editTitulo').val(d.D001F_Titulo); jQuery('#editEan').val(d.D001F_EAN); jQuery('#editGar').val(d.D001F_garantia); jQuery('#editPeso').val(d.D001F_peso); jQuery('#editAlt').val(d.D001F_altura); jQuery('#editLarg').val(d.D001F_largura); jQuery('#editComp').val(d.D001F_comprimento); jQuery('#editTags').val(d.D001F_tags || ''); renderTags(); jQuery('#editDescPreview').html(d.D001F_Descricao); jQuery('#editDescCode').val(d.D001F_Descricao); toggleDescMode('visual'); var imgHtml = ''; for(var i=1; i<=10; i++) { var val = res.imgs[i] || ''; imgHtml += '<div class="h-card-img"><img src="'+(val?val:'https://via.placeholder.com/48')+'" class="h-thumb" id="prevImg'+i+'"><input type="text" class="h-input-img img-inp" data-idx="'+i+'" value="'+val+'" placeholder="URL Imagem '+i+'" onchange="updatePrevImg('+i+',this.value)"></div>'; } jQuery('#editImgsContainer').html(imgHtml); jQuery('#modalEditCor').fadeIn(200).css('display', 'flex'); } else { showHAlert('Erro', res.msg); } }, complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); } }); }
+    
+    function abrirEditorCor(id) { 
+        var url = jQuery('#hardness_ajaxUrl_cor').val(); 
+        var sysId = jQuery('#sys_base_divId_cor').val(); 
+        // Recuperar root apenas se necessário passar, mas como é só leitura aqui, ok.
+        
+        if (sysId) jQuery('#' + sysId).showLoading(); 
+        jQuery.ajax({ 
+            url: url, type: 'POST', dataType: 'json', 
+            data: { ajax: 1, action: 'get_edit_data_cor', id: id }, 
+            success: function(res) { 
+                if(res.ok) { 
+                    var d = res.data; jQuery('#editIdCor').val(d.D001F_Id); jQuery('#editSkuCor').val(d.D001F_D001_Codigo_Produto); jQuery('#editTitulo').val(d.D001F_Titulo); jQuery('#editEan').val(d.D001F_EAN); jQuery('#editGar').val(d.D001F_garantia); jQuery('#editPeso').val(d.D001F_peso); jQuery('#editAlt').val(d.D001F_altura); jQuery('#editLarg').val(d.D001F_largura); jQuery('#editComp').val(d.D001F_comprimento); jQuery('#editTags').val(d.D001F_tags || ''); renderTags(); jQuery('#editDescPreview').html(d.D001F_Descricao); jQuery('#editDescCode').val(d.D001F_Descricao); toggleDescMode('visual'); var imgHtml = ''; for(var i=1; i<=10; i++) { var val = res.imgs[i] || ''; imgHtml += '<div class="h-card-img"><img src="'+(val?val:'https://via.placeholder.com/48')+'" class="h-thumb" id="prevImg'+i+'"><input type="text" class="h-input-img img-inp" data-idx="'+i+'" value="'+val+'" placeholder="URL Imagem '+i+'" onchange="updatePrevImg('+i+',this.value)"></div>'; } jQuery('#editImgsContainer').html(imgHtml); jQuery('#modalEditCor').fadeIn(200).css('display', 'flex'); 
+                } else { showHAlert('Erro', res.msg); } 
+            }, 
+            complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); } 
+        }); 
+    }
+    
     function toggleTagMenu() { var m = document.getElementById('tagMenu'); if (m.classList.contains('active')) m.classList.remove('active'); else m.classList.add('active'); }
     const TAG_DEFS = { 1: { label: 'IMAGEM', bg: '#8b5cf6', br: '#7c3aed' }, 2: { label: 'TÍTULO', bg: '#3b82f6', br: '#2563eb' }, 3: { label: 'DESCRIÇÃO', bg: '#10b981', br: '#059669' }, 4: { label: 'PESOS E DIMENSÃO', bg: '#f97316', br: '#ea580c' }, 5: { label: 'MATCH', bg: '#ef4444', br: '#dc2626' }, 6: { label: 'VOLTAGEM', bg: '#eab308', br: '#ca8a04' }, 7: { label: 'COR', bg: '#ec4899', br: '#db2777' } };
     function renderTags() { var raw = document.getElementById('editTags').value; var list = raw.split(',').map(s => s.trim()).filter(s => s !== ''); var html = ''; jQuery('.tag-option').removeClass('hidden'); list.forEach(function(tid) { var def = TAG_DEFS[tid]; if(def) { var style = 'background:'+def.bg+'; color:#fff; border:1px solid '+def.br+';'; html += '<div class="tag-pill" style="'+style+'">'+def.label+' <i class="material-icons" onclick="removeTag('+tid+')">close</i></div>'; jQuery('.tag-option[data-val="'+tid+'"]').addClass('hidden'); } }); document.getElementById('tagListContainer').innerHTML = html; }
@@ -1169,21 +1274,77 @@ echo "<div id='demoCor'></div></div>";
     function updatePrevImg(idx, val) { var src = val ? val : 'https://via.placeholder.com/48'; document.getElementById('prevImg'+idx).src = src; }
     function toggleDescMode(mode) { var visual = document.getElementById('editDescPreview'), code = document.getElementById('editDescCode'), btnV = document.getElementById('btnDescVisual'), btnC = document.getElementById('btnDescCode'); if(mode === 'code') { code.value = visual.innerHTML; visual.style.display = 'none'; code.style.display = 'block'; btnV.classList.remove('active'); btnC.classList.add('active'); } else { visual.innerHTML = code.value; code.style.display = 'none'; visual.style.display = 'block'; btnC.classList.remove('active'); btnV.classList.add('active'); } }
     function fecharEditorCor() { jQuery('#modalEditCor').fadeOut(200); }
-    function salvarEdicaoCor() { showHConfirm('Salvar Alterações', 'Salvar alterações como rascunho na lista de correção?', function() { var descFinal = (document.getElementById('editDescCode').style.display === 'block') ? document.getElementById('editDescCode').value : document.getElementById('editDescPreview').innerHTML; var data = { ajax: 1, action: 'save_edit_cor', id: jQuery('#editIdCor').val(), sku: jQuery('#editSkuCor').val(), titulo: jQuery('#editTitulo').val(), desc: descFinal, ean: jQuery('#editEan').val(), gar: jQuery('#editGar').val(), peso: jQuery('#editPeso').val(), alt: jQuery('#editAlt').val(), larg: jQuery('#editLarg').val(), comp: jQuery('#editComp').val(), tags: jQuery('#editTags').val() }; jQuery('.img-inp').each(function() { var idx = jQuery(this).data('idx'); data['img_'+idx] = jQuery(this).val(); }); var url = jQuery('#hardness_ajaxUrl_cor').val(), sysId = jQuery('#sys_base_divId_cor').val(); if (sysId) jQuery('#' + sysId).showLoading(); jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: data, success: function(res) { if(res.ok) { fecharEditorCor(); appCor.loadData(1); showHAlert('Sucesso', res.msg); } else { showHAlert('Erro', 'Erro: ' + res.msg); } }, error: function() { showHAlert('Erro', 'Erro de comunicação ao salvar.'); }, complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); } }); }); }
-    function finalizarCorrecao(id) { showHConfirm('Finalizar', 'Deseja FINALIZAR esta correção? Isso atualizará o produto original e removerá este item da lista.', function() { var url = jQuery('#hardness_ajaxUrl_cor').val(), sysId = jQuery('#sys_base_divId_cor').val(); if (sysId) jQuery('#' + sysId).showLoading(); jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'finalize_cor', id: id }, success: function(res) { if(res.ok) { jQuery('#row_cor_'+id).fadeOut(300, function(){ jQuery(this).remove(); }); showHAlert('Sucesso', res.msg); } else { showHAlert('Erro', 'Erro: ' + res.msg); } }, complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); } }); }); }
+    
+    function salvarEdicaoCor() { 
+        showHConfirm('Salvar Alterações', 'Salvar alterações como rascunho na lista de correção?', function() { 
+            var descFinal = (document.getElementById('editDescCode').style.display === 'block') ? document.getElementById('editDescCode').value : document.getElementById('editDescPreview').innerHTML; 
+            var data = { 
+                ajax: 1, action: 'save_edit_cor', id: jQuery('#editIdCor').val(), sku: jQuery('#editSkuCor').val(), titulo: jQuery('#editTitulo').val(), desc: descFinal, ean: jQuery('#editEan').val(), gar: jQuery('#editGar').val(), peso: jQuery('#editPeso').val(), alt: jQuery('#editAlt').val(), larg: jQuery('#editLarg').val(), comp: jQuery('#editComp').val(), tags: jQuery('#editTags').val() 
+            }; 
+            jQuery('.img-inp').each(function() { var idx = jQuery(this).data('idx'); data['img_'+idx] = jQuery(this).val(); }); 
+            
+            var url = jQuery('#hardness_ajaxUrl_cor').val();
+            var sysId = jQuery('#sys_base_divId_cor').val();
+            // [CORREÇÃO] Passando Root e ID
+            var sysRoot = jQuery('#sys_base_divRoot_cor').val();
+            data.sys_divRoot = sysRoot;
+            data.sys_divId = sysId;
+            
+            if (sysId) jQuery('#' + sysId).showLoading(); 
+            jQuery.ajax({ 
+                url: url, type: 'POST', dataType: 'json', data: data, 
+                success: function(res) { 
+                    if(res.ok) { fecharEditorCor(); appCor.loadData(1); showHAlert('Sucesso', res.msg); } else { showHAlert('Erro', 'Erro: ' + res.msg); } 
+                }, 
+                error: function() { showHAlert('Erro', 'Erro de comunicação ao salvar.'); }, 
+                complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); } 
+            }); 
+        }); 
+    }
+    
+    function finalizarCorrecao(id) { 
+        showHConfirm('Finalizar', 'Deseja FINALIZAR esta correção? Isso atualizará o produto original e removerá este item da lista.', function() { 
+            var url = jQuery('#hardness_ajaxUrl_cor').val();
+            var sysId = jQuery('#sys_base_divId_cor').val(); 
+            var sysRoot = jQuery('#sys_base_divRoot_cor').val();
+            
+            if (sysId) jQuery('#' + sysId).showLoading(); 
+            jQuery.ajax({ 
+                url: url, type: 'POST', dataType: 'json', 
+                data: { ajax: 1, action: 'finalize_cor', id: id, sys_divRoot: sysRoot, sys_divId: sysId }, 
+                success: function(res) { 
+                    if(res.ok) { jQuery('#row_cor_'+id).fadeOut(300, function(){ jQuery(this).remove(); }); showHAlert('Sucesso', res.msg); } else { showHAlert('Erro', 'Erro: ' + res.msg); } 
+                }, 
+                complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); } 
+            }); 
+        }); 
+    }
+    
     const mVisCor = document.getElementById('modalVisCor'), vThumbsCor = document.getElementById('visThumbsCor'), vHeroCor = document.getElementById('visHeroCor'), vTitleCor = document.getElementById('visTitleCor'), vSkuCor = document.getElementById('visSkuCor'), vBrandCor = document.getElementById('visBrandCor'), vDescCor = document.getElementById('visDescCor'), vSpecsCor = document.getElementById('visSpecsContentCor');
-    function abrirVisualizadorCor(sku) { var url = document.getElementById('hardness_ajaxUrl_cor').value, sysId = document.getElementById('sys_base_divId_cor').value; if (sysId && typeof jQuery !== 'undefined' && jQuery('#' + sysId).length) jQuery('#' + sysId).showLoading(); jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'get_details_cor', sku: sku }, success: function (res) { if (res.ok) { vTitleCor.innerText = res.titulo; vSkuCor.innerText = res.sku; vBrandCor.innerText = res.marca; vDescCor.innerHTML = res.desc ? res.desc : '<em>Sem descrição.</em>'; vThumbsCor.innerHTML = ''; if (res.imgs.length > 0) vHeroCor.src = res.imgs[0]; res.imgs.forEach((url, idx) => { let img = document.createElement('img'); img.src = url; img.className = 'vis-mini-cor'; if (idx === 0) img.classList.add('active'); img.onclick = () => { vHeroCor.src = url; document.querySelectorAll('.vis-mini-cor').forEach(el => el.classList.remove('active')); img.classList.add('active'); }; vThumbsCor.appendChild(img); }); let h = '<table class="vis-specs-table-cor">'; let has = false; if (res.specs.EAN) { h += `<tr><td><strong>EAN:</strong> ${res.specs.EAN}</td></tr>`; has = true; } if (res.specs.Garantia) { h += `<tr><td><strong>Garantia:</strong> ${res.specs.Garantia}</td></tr>`; has = true; } if (res.specs.Peso) { h += `<tr><td><strong>Peso:</strong> ${res.specs.Peso}</td></tr>`; has = true; } if (res.specs.Altura) { h += `<tr><td><strong>Altura:</strong> ${res.specs.Altura}</td></tr>`; has = true; } if (res.specs.Largura) { h += `<tr><td><strong>Largura:</strong> ${res.specs.Largura}</td></tr>`; has = true; } if (res.specs.Comprimento) { h += `<tr><td><strong>Comp.:</strong> ${res.specs.Comprimento}</td></tr>`; has = true; } h += '</table>'; vSpecsCor.innerHTML = has ? h : '<div style="color:#999;font-size:12px">Vazio</div>'; mVisCor.style.display = 'flex'; } else { showHAlert('Erro', res.msg || 'Erro ao carregar'); } }, error: function () { showHAlert('Erro', 'Erro na comunicação'); }, complete: function () { if (sysId && typeof jQuery !== 'undefined' && jQuery('#' + sysId).length) jQuery('#' + sysId).hideLoading(); } }); }
+    
+    function abrirVisualizadorCor(sku) { 
+        var url = document.getElementById('hardness_ajaxUrl_cor').value;
+        var sysId = document.getElementById('sys_base_divId_cor').value; 
+        var sysRoot = document.getElementById('sys_base_divRoot_cor').value; 
+
+        if (sysId && typeof jQuery !== 'undefined' && jQuery('#' + sysId).length) jQuery('#' + sysId).showLoading(); 
+        jQuery.ajax({ 
+            url: url, type: 'POST', dataType: 'json', 
+            data: { ajax: 1, action: 'get_details_cor', sku: sku, sys_divRoot: sysRoot, sys_divId: sysId }, 
+            success: function (res) { 
+                if (res.ok) { 
+                    vTitleCor.innerText = res.titulo; vSkuCor.innerText = res.sku; vBrandCor.innerText = res.marca; vDescCor.innerHTML = res.desc ? res.desc : '<em>Sem descrição.</em>'; vThumbsCor.innerHTML = ''; if (res.imgs.length > 0) vHeroCor.src = res.imgs[0]; res.imgs.forEach((url, idx) => { let img = document.createElement('img'); img.src = url; img.className = 'vis-mini-cor'; if (idx === 0) img.classList.add('active'); img.onclick = () => { vHeroCor.src = url; document.querySelectorAll('.vis-mini-cor').forEach(el => el.classList.remove('active')); img.classList.add('active'); }; vThumbsCor.appendChild(img); }); let h = '<table class="vis-specs-table-cor">'; let has = false; if (res.specs.EAN) { h += `<tr><td><strong>EAN:</strong> ${res.specs.EAN}</td></tr>`; has = true; } if (res.specs.Garantia) { h += `<tr><td><strong>Garantia:</strong> ${res.specs.Garantia}</td></tr>`; has = true; } if (res.specs.Peso) { h += `<tr><td><strong>Peso:</strong> ${res.specs.Peso}</td></tr>`; has = true; } if (res.specs.Altura) { h += `<tr><td><strong>Altura:</strong> ${res.specs.Altura}</td></tr>`; has = true; } if (res.specs.Largura) { h += `<tr><td><strong>Largura:</strong> ${res.specs.Largura}</td></tr>`; has = true; } if (res.specs.Comprimento) { h += `<tr><td><strong>Comp.:</strong> ${res.specs.Comprimento}</td></tr>`; has = true; } h += '</table>'; vSpecsCor.innerHTML = has ? h : '<div style="color:#999;font-size:12px">Vazio</div>'; mVisCor.style.display = 'flex'; 
+                } else { showHAlert('Erro', res.msg || 'Erro ao carregar'); } 
+            }, 
+            error: function () { showHAlert('Erro', 'Erro na comunicação'); }, 
+            complete: function () { if (sysId && typeof jQuery !== 'undefined' && jQuery('#' + sysId).length) jQuery('#' + sysId).hideLoading(); } 
+        }); 
+    }
     function fecharVisCor() { mVisCor.style.display = 'none'; }
     function imprimirConteudoModalCor() { const f = document.createElement('iframe'); f.style.display = 'none'; document.body.appendChild(f); const d = f.contentWindow.document; const s = vSpecsCor.innerHTML; const c = `<html><head><style>body{font-family:Arial,sans-serif;padding:20px;color:#333}h1{font-size:20px;margin-bottom:5px}.meta{color:#666;font-size:12px;margin-bottom:20px;border-bottom:1px solid #ccc;padding-bottom:10px}.hero{text-align:center;margin-bottom:20px}.hero img{max-width:300px;max-height:300px}.desc{font-size:12px;line-height:1.5;margin-bottom:20px; text-align:justify;}.specs-box{border:1px solid #eee;padding:10px;border-radius:5px}.specs-box table{width:100%;font-size:12px}.specs-box td{padding:4px 0}</style></head><body><h1>${vTitleCor.innerText}</h1><div class="meta">SKU: ${vSkuCor.innerText} | ${vBrandCor.innerText}</div><div class="hero"><img src="${vHeroCor.src}"></div><h3>Descrição</h3><div class="desc">${vDescCor.innerHTML}</div><h3>Specs</h3><div class="specs-box">${s}</div></body></html>`; d.open(); d.write(c); d.close(); setTimeout(() => { f.contentWindow.print(); setTimeout(() => document.body.removeChild(f), 1000); }, 200); }
     document.addEventListener('keydown', e => { if (e.key === "Escape") { fecharVisCor(); fecharEditorCor(); jQuery('#modalImportCor').fadeOut(200); jQuery('#diffModal').fadeOut(100); } });
 
-    let currentConfirmCallback = null;
-    function showHAlert(title, msg) { document.getElementById('hAlertTitle').innerText = title; document.getElementById('hAlertMsg').innerText = msg; jQuery('#hModalAlert').fadeIn(200).css('display', 'flex'); }
-    function closeHAlert() { jQuery('#hModalAlert').fadeOut(200); }
-    function showHConfirm(title, msg, callback) { document.getElementById('hConfirmTitle').innerText = title; document.getElementById('hConfirmMsg').innerText = msg; currentConfirmCallback = callback; jQuery('#hModalConfirm').fadeIn(200).css('display', 'flex'); }
-    function closeHConfirm() { jQuery('#hModalConfirm').fadeOut(200); currentConfirmCallback = null; }
-    document.getElementById('btnHConfirmAction').onclick = function() { if (currentConfirmCallback) currentConfirmCallback(); closeHConfirm(); };
-
-    // Iniciar Cache ao carregar
-    loadFiltersCor();
+    jQuery(document).ready(function() {
+        loadFiltersCor();
+    });
 </script>

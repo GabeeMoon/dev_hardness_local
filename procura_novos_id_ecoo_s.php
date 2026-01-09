@@ -32,7 +32,6 @@ $con = $g['conexaoBanco'];
 
 
 // 2) ETAPA 1: FORÇAR ATUALIZAÇÃO DA FLAG (CORREÇÃO DOS NULOS)
-// Adicionei "OR IS NULL" para garantir que pegue os vazios que o SQL ignorou antes.
 $sqlUpdateForce = "
     UPDATE D001E e
     INNER JOIN D001 d ON e.D001E_D001_Id = d.D001_Id
@@ -46,7 +45,6 @@ $totalCorrigidos = \mysqli_affected_rows($con);
 
 
 // 3) ETAPA 2: INSERÇÃO DE NOVOS PRODUTOS (FLAG 'S')
-// Insere apenas quem tem flag S na origem e não existe no destino
 $sqlInsertNovos = "
     INSERT INTO D001E (
         D001E_D001_Id, 
@@ -61,6 +59,7 @@ $sqlInsertNovos = "
         NOW()
     FROM D001 d
     WHERE (d.D001_Flag_Ecommerce = 'S' OR d.D001_Flag_Ecommerce = 's')
+    AND d.D001_Flag_Ecommerce = 'S'
     AND NOT EXISTS (
         SELECT 1 FROM D001E e WHERE e.D001E_D001_Id = d.D001_Id
     )

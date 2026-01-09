@@ -15,12 +15,10 @@ ini_set('display_errors', 1);
 $qtdePorPagina = 150;
 $limit         = $qtdePorPagina;
 
-// --- [CORREÇÃO DE CONTEXTO - DIV ROOT E ID] ---
-// Recupera do ERP ($g) ou do POST (seja via sys_ ou nomes nativos) para manter a hierarquia de janelas
+// --- [CORREÇÃO DE CONTEXTO] ---
 $gDivRoot = isset($g['divRoot']) && $g['divRoot'] != "" ? $g['divRoot'] : (isset($_POST['sys_divRoot']) ? $_POST['sys_divRoot'] : (isset($_POST['divIdRoot']) ? $_POST['divIdRoot'] : ''));
 $gDivId   = isset($g['divId']) && $g['divId'] != "" ? $g['divId'] : (isset($_POST['sys_divId']) ? $_POST['sys_divId'] : (isset($_POST['divId']) ? $_POST['divId'] : 'contentMel'));
 
-// --- [EMPRESA ATUAL] ---
 $C004_Id = isset($g['empresaAtual']) ? (int) $g['empresaAtual'] : 1;
 
 $page = isset($_POST['page']) ? (int) $_POST['page'] : 1;
@@ -32,12 +30,11 @@ if (isset($_POST['pageSize'])) {
 }
 
 $offset = ($page - 1) * $limit;
-
 $isAjax  = (isset($_POST['ajax']) && (int) $_POST['ajax'] === 1);
 $apiMode = 0;
 
 // =============================================================================
-// [FUNC] FUNÇÕES DE CÁLCULO (SCORE) - COM SUFIXO _MEL
+// [FUNC] FUNÇÕES DE CÁLCULO
 // =============================================================================
 if (!function_exists('extrairMarcaJsonAnyMarketMel')) {
     function extrairMarcaJsonAnyMarketMel($jsonString) {
@@ -90,12 +87,12 @@ if (!function_exists('analiseImagensMel')) {
 if (!function_exists('analiseAtributosMel')) {
     function analiseAtributosMel($row) {
         $count = 0;
-        if (!empty($row['D001E_EAN'])) $count++;
-        if (!empty($row['D001E_garantia'])) $count++;
-        if (!empty($row['D001E_peso'])) $count++;
-        if (!empty($row['D001E_altura'])) $count++;
-        if (!empty($row['D001E_largura'])) $count++;
-        if (!empty($row['D001E_comprimento'])) $count++;
+        if (!empty($row['D001E_EAN']) && trim($row['D001E_EAN']) !== '') $count++;
+        if (!empty($row['D001E_garantia']) && trim($row['D001E_garantia']) !== '') $count++;
+        if (!empty($row['D001E_peso']) && trim($row['D001E_peso']) !== '') $count++;
+        if (!empty($row['D001E_altura']) && trim($row['D001E_altura']) !== '') $count++;
+        if (!empty($row['D001E_largura']) && trim($row['D001E_largura']) !== '') $count++;
+        if (!empty($row['D001E_comprimento']) && trim($row['D001E_comprimento']) !== '') $count++;
         $n = 0; $regra = "";
         if ($count < 2) { $n = 1; $regra = "< 2 atrib."; }
         elseif ($count < 4) { $n = 3; $regra = "2-3 atrib."; }
@@ -150,31 +147,23 @@ if (!function_exists('gerarTooltipHtmlMel')) {
 }
 
 // =============================================================================
-// [RENDER] FUNÇÃO DE LINHA (D001E)
+// [RENDER] FUNÇÃO DE LINHA
 // =============================================================================
 function renderQualityRowMel($row) {
-    // --- USO DE GLOBAIS RECUPERADAS PARA EVITAR QUEBRA DE SKU ---
     global $gDivRoot, $gDivId;
-
-    $marca       = isset($row['D001E_Marca']) ? $row['D001E_Marca'] : '';
+    $marca         = isset($row['D001E_Marca']) ? $row['D001E_Marca'] : '';
     $updateMarca = false;
     if (empty($marca) && !empty($row['D001E_Json_Nativo'])) {
         $marcaExtraida = extrairMarcaJsonAnyMarketMel($row['D001E_Json_Nativo']);
-        if (!empty($marcaExtraida)) {
-            $marca       = $marcaExtraida;
-            $updateMarca = true;
-        } else {
-            $marca = "ND";
-        }
+        if (!empty($marcaExtraida)) { $marca = $marcaExtraida; $updateMarca = true; } else { $marca = "ND"; }
     }
 
-    // SCORE
-    $resT  = analiseTituloMel($row['D001E_Sku_Titulo']); // Corrigido para Sku_Titulo
-    $resD  = analiseDescricaoMel($row['D001E_Descricao']);
-    $resI  = analiseImagensMel($row);
-    $resA  = analiseAtributosMel($row);
-    $resIE = analiseImagemEspecialMel($row);
-    $resV  = analiseVideoMel($row);
+    $resT = analiseTituloMel($row['D001E_Sku_Titulo']);
+    $resD = analiseDescricaoMel($row['D001E_Descricao']);
+    $resI = analiseImagensMel($row);
+    $resA = analiseAtributosMel($row);
+    $resIE= analiseImagemEspecialMel($row);
+    $resV = analiseVideoMel($row);
 
     $soma  = ($resT['nota'] * 3) + ($resD['nota'] * 3) + ($resI['nota'] * 3) + ($resIE['nota'] * 1) + ($resA['nota'] * 1) + ($resV['nota'] * 1);
     $final = floor($soma / 11);
@@ -189,18 +178,9 @@ function renderQualityRowMel($row) {
     if ($row['D001E_pont_desc'] != $resD['nota']) $sqlSets[] = "D001E_pont_desc = {$resD['nota']}";
     if ($row['D001E_pont_img'] != $resI['nota']) $sqlSets[] = "D001E_pont_img = {$resI['nota']}";
     if ($row['D001E_pont_espec'] != $resA['nota']) $sqlSets[] = "D001E_pont_espec = {$resA['nota']}";
+    if ($updateMarca) { $marcaSafe = mysql_real_escape_string($marca); $sqlSets[] = "D001E_Marca = '$marcaSafe'"; }
+    if (!empty($sqlSets)) { $sqlUpdate = "UPDATE D001E SET " . implode(', ', $sqlSets) . " WHERE D001E_Id = $idProd"; mysql_query($sqlUpdate); }
 
-    if ($updateMarca) {
-        $marcaSafe = mysql_real_escape_string($marca);
-        $sqlSets[] = "D001E_Marca = '$marcaSafe'";
-    }
-
-    if (!empty($sqlSets)) {
-        $sqlUpdate = "UPDATE D001E SET " . implode(', ', $sqlSets) . " WHERE D001E_Id = $idProd";
-        mysql_query($sqlUpdate);
-    }
-
-    // Cores e Labels
     switch ($final) {
         case 6: $c = "#0098D3"; $p = 100; $l = "Ótima"; break;
         case 5: $c = "#10b981"; $p = 85; $l = "Muito Boa"; break;
@@ -225,51 +205,36 @@ function renderQualityRowMel($row) {
     if (!empty($row['D001E_altura'])) $specHtml .= "<b>Dim:</b> " . ($row['D001E_altura'] ?: 0) . "x" . ($row['D001E_largura'] ?: 0) . "x" . ($row['D001E_comprimento'] ?: 0);
     if (empty($specHtml)) $specHtml = "<span style='color:#bbb'>Vazio</span>";
 
-    // --- DADOS D009 ---
     $freqVenda = !empty($row['D009_Frequencia_Venda']) ? $row['D009_Frequencia_Venda'] : '<b>0</b>';
     $custoVal  = isset($row['D009_Valor_Custo_Unitario']) ? (float) $row['D009_Valor_Custo_Unitario'] : 0;
     $estTab    = isset($row['D009_Quantidade_Estoque_Tabela']) ? (int) $row['D009_Quantidade_Estoque_Tabela'] : 0;
     $estLiq    = isset($row['D009_Quantidade_Estoque_Liquido']) ? (int) $row['D009_Quantidade_Estoque_Liquido'] : 0;
-
     $custoHtml  = ($custoVal > 0) ? "<span style='color:#0098D3; font-weight:700;'>R$ " . number_format($custoVal, 2, ',', '.') . "</span>" : "<b>0</b>";
     $estTabHtml = ($estTab > 0) ? $estTab : "<b>0</b>";
     $estLiqHtml = ($estLiq > 0) ? $estLiq : "<b>0</b>";
-
     $d001Id    = $row['D001E_D001_Id'];
-
-    // Monta JS com as globais seguras
     $jsForn = "abrirJanela(false, '{$gDivRoot}', '{$gDivId}', unique(), '', 'Anuncio', '/cad/cad002/content/form2/', '&acaoId=' + encodeURIComponent('{$d001Id}'), [700,400]); return false;";
 
     return "
     <div class='quality-row-mel'>
-        <div class='col-check'>
-             <input type='checkbox' class='row-check' value='$idProd'>
-        </div>
-        
-        <div class='thumb-box' onclick='abrirVisualizadorMel(\"$sku\")'>
-            <img src='$imgCapa'>
-        </div>
-        
+        <div class='col-check'><input type='checkbox' class='row-check' value='$idProd'></div>
+        <div class='thumb-box' onclick='abrirVisualizadorMel(\"$sku\")'><img src='$imgCapa'></div>
         <div class='col-info'>
             <div class='prod-title'>{$row['D001E_Sku_Titulo']}</div>
             <div class='prod-sub'>
                 <span class='badge-any' title='ID AnyMarket' style='cursor:pointer' onclick='window.open(\"https://app.anymarket.com.br/app-js/products/edit/$idAny\", \"_blank\"); event.stopPropagation();'>Id Any: $idAny</span>
-                <span class='badge-sku' title='SKU Produto' style='cursor:pointer' onclick=\"{$jsForn}\">Sku: $sku</span>
+                <span class='badge-sku' title='SKU Produto' style='cursor:pointer' onclick=\"$jsForn\">Sku: $sku</span>
                 <span class='badge-brand' title='$marcaHtml'>Marca: $marcaHtml</span>
             </div>
         </div>
-        
         <div class='col-metrics'>
             <div class='metric-cell'><span class='lbl'>Freq</span> <span class='val'>$freqVenda</span></div>
             <div class='metric-cell'><span class='lbl'>Custo</span> <span class='val'>$custoHtml</span></div>
             <div class='metric-cell'><span class='lbl'>Estq. Tab</span> <span class='val'>$estTabHtml</span></div>
             <div class='metric-cell'><span class='lbl'>Estq. Liq</span> <span class='val'>$estLiqHtml</span></div>
         </div>
-        
         <div class='col-box-scroll desc-scroll-mel'>" . ($descRaw ?: '<em>Sem descrição</em>') . "</div>
-        
         <div class='col-box-scroll spec-auto-mel'>$specHtml</div>
-        
         <div class='mini-score-box' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>
             <div class='mini-score-val' style='background:" . getCorNotaMel($resT['nota']) . "'>{$resT['nota']}</div>
             <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipHtmlMel("Título", $resT) . "</div>
@@ -286,16 +251,15 @@ function renderQualityRowMel($row) {
             <div class='mini-score-val' style='background:" . getCorNotaMel($resA['nota']) . "'>{$resA['nota']}</div>
             <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipHtmlMel("Atributos", $resA) . "</div>
         </div>
-        
         <div class='col-score'>
             <div class='score-circle' style='--color:$c; --percent:$p;'>
                 <span class='score-number'>$final</span>
             </div>
             <span class='score-label' style='color:$c'>$l</span>
         </div>
-        
-        <div class='col-actions' style='display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;'>
-             <button class='f-btn-send-single' onclick='enviarCorrecaoSingleMel(\"$idProd\")' title='Enviar para Melhoria' style='width:100%; border-radius: 8px; padding:8px 0;'><i class='material-icons' style='font-size:18px'>build</i></button>
+        <div class='col-actions' style='display: flex; justify-content: center; gap: 6px;align-items: center;'>
+             <button class='f-btn-send-single' onclick='enviarCorrecaoSingleMel(\"$idProd\")' title='Enviar para Melhoria'><i class='material-icons' style='font-size:18px'>build</i></button>
+             <button class='f-btn-sync_i' onclick='syncAnyMarketItemMel(\"$idProd\")' title='Atualizar com AnyMarket'><i class='material-icons' style='font-size:18px'>sync</i></button>
         </div>
     </div>";
 }
@@ -305,138 +269,294 @@ function renderQualityRowMel($row) {
 // =============================================================================
 if ($isAjax) {
     
-    if (!function_exists('cleanInputMel')) {
-        function cleanInputMel($data) {
-            $data = trim($data);
-            return mysql_real_escape_string($data);
-        }
-    }
-
-    // --- FUNÇÃO MASTER DE FILTROS INTELIGENTES (TEXTO E NÚMERO) ---
+    if (!function_exists('cleanInputMel')) { function cleanInputMel($data) { return mysql_real_escape_string(trim($data)); } }
     if (!function_exists('getSmartWhereMel')) {
         function getSmartWhereMel($col, $val, $mode = 'text') {
-            $val = trim($val);
-            if ($val === '') return null;
-
+            $val = trim($val); if ($val === '') return null;
             if (strpos($val, ';') !== false) {
-                $parts = explode(';', $val);
-                $arr = [];
-                $orLike = [];
+                $parts = explode(';', $val); $arr = []; $orLike = [];
                 foreach($parts as $p) {
-                    $p = trim($p);
-                    if($p === '') continue;
-                    if ($mode === 'number') {
-                        $p = str_replace(',', '.', $p); 
-                        if(is_numeric($p)) $arr[] = $p;
-                    } else {
-                        $cleanP = mysql_real_escape_string($p);
-                        $orLike[] = "$col LIKE '%$cleanP%'";
-                    }
+                    $p = trim($p); if($p === '') continue;
+                    if ($mode === 'number') { $p = str_replace(',', '.', $p); if(is_numeric($p)) $arr[] = $p; } 
+                    else { $cleanP = mysql_real_escape_string($p); $orLike[] = "$col LIKE '%$cleanP%'"; }
                 }
                 if ($mode === 'number' && !empty($arr)) return "$col IN (" . implode(',', $arr) . ")";
                 if ($mode === 'text' && !empty($orLike)) return "(" . implode(" OR ", $orLike) . ")";
             }
-
-            $op = '';
-            $cleanVal = $val;
-            if (isset($val[0])) {
-                if ($val[0] === '>') { $op = '>'; $cleanVal = substr($val, 1); }
-                elseif ($val[0] === '<') { $op = '<'; $cleanVal = substr($val, 1); }
-                elseif ($val[0] === '!') { $op = '!'; $cleanVal = substr($val, 1); }
-            }
-
+            $op = ''; $cleanVal = $val;
+            if (isset($val[0])) { if ($val[0] === '>') { $op = '>'; $cleanVal = substr($val, 1); } elseif ($val[0] === '<') { $op = '<'; $cleanVal = substr($val, 1); } elseif ($val[0] === '!') { $op = '!'; $cleanVal = substr($val, 1); } }
             $cleanVal = trim($cleanVal);
-            
             if ($mode === 'number') {
-                $cleanVal = str_replace(',', '.', $cleanVal);
-                if (!is_numeric($cleanVal)) return null; 
-                if ($op === '!') return "$col <> $cleanVal";
-                if ($op === '>' || $op === '<') return "$col $op $cleanVal";
-                return "$col = $cleanVal"; 
+                $cleanVal = str_replace(',', '.', $cleanVal); if (!is_numeric($cleanVal)) return null; 
+                if ($op === '!') return "$col <> $cleanVal"; if ($op === '>' || $op === '<') return "$col $op $cleanVal"; return "$col = $cleanVal"; 
             }
-
             $safeVal = mysql_real_escape_string($cleanVal);
-            if ($op === '!') return "$col NOT LIKE '%$safeVal%'";
-            if ($op === '>' || $op === '<') return "$col $op '$safeVal'"; 
-            return "$col LIKE '%$safeVal%'";
+            if ($op === '!') return "$col NOT LIKE '%$safeVal%'"; if ($op === '>' || $op === '<') return "$col $op '$safeVal'"; return "$col LIKE '%$safeVal%'";
         }
     }
 
-    // [NOVO] ENVIAR PARA CORREÇÃO (D001E -> D001F)
-    if (isset($_POST['action']) && $_POST['action'] === 'send_correction_mel') {
-        $ids = isset($_POST['ids']) ? $_POST['ids'] : []; 
+    // [NOVO] ACTION DE SYNC INDIVIDUAL E EM MASSA
+    if (isset($_POST['action']) && ($_POST['action'] === 'sync_anymarket_item_mel' || $_POST['action'] === 'sync_anymarket_massa_mel')) {
+        $ids = isset($_POST['ids']) ? $_POST['ids'] : [$_POST['id']];
         if (!is_array($ids)) $ids = explode(',', $ids);
-        
-        $tipo = 'corr'; // Default
-        if (isset($_POST['tipo']) && in_array($_POST['tipo'], ['mod', 'corr'])) {
-            $tipo = $_POST['tipo'];
-        }
-
-        // [NOVO] Captura Obs e Tags
-        $obs = isset($_POST['obs']) ? mysql_real_escape_string($_POST['obs']) : '';
-        $tags = isset($_POST['tags']) ? mysql_real_escape_string($_POST['tags']) : '';
-        
-        $count = 0;
-        foreach ($ids as $idE) {
-            $idE = (int)$idE;
-            if ($idE <= 0) continue;
-
-            $sqlSrc = "SELECT * FROM D001E WHERE D001E_Id = $idE LIMIT 1";
-            $rsSrc = mysql_query($sqlSrc);
-            if ($rsSrc && mysql_num_rows($rsSrc) > 0) {
-                $src = mysql_fetch_assoc($rsSrc);
-                
-                $sku = mysql_real_escape_string($src['D001E_D001_Codigo_Produto']);
-                $check = mysql_query("SELECT D001F_Id FROM D001F WHERE D001F_D001_Codigo_Produto = '$sku'");
-                
-                if (mysql_num_rows($check) == 0) {
-                    $cols = "D001F_D001_Id, D001F_D001_Codigo_Produto, D001F_Id_Any, D001F_Titulo, D001F_Marca, D001F_Descricao, 
-                             D001F_Imagem_1, D001F_Imagem_2, D001F_Imagem_3, D001F_Imagem_4, D001F_Imagem_5, 
-                             D001F_Imagem_6, D001F_Imagem_7, D001F_Imagem_8, D001F_Imagem_9, D001F_Imagem_10, 
-                             D001F_EAN, D001F_garantia, D001F_peso, D001F_altura, D001F_largura, D001F_comprimento, D001F_ult_att, D001F_Tipo, D001F_Obs, D001F_tags";
-                             
-                    $vals = "'" . mysql_real_escape_string($src['D001E_D001_Id']) . "',
-                             '" . mysql_real_escape_string($src['D001E_D001_Codigo_Produto']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Id_Any']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Sku_Titulo']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Marca']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Descricao']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Imagem_1']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Imagem_2']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Imagem_3']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Imagem_4']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Imagem_5']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Imagem_6']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Imagem_7']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Imagem_8']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Imagem_9']) . "',
-                             '" . mysql_real_escape_string($src['D001E_Imagem_10']) . "',
-                             '" . mysql_real_escape_string($src['D001E_EAN']) . "',
-                             '" . mysql_real_escape_string($src['D001E_garantia']) . "',
-                             '" . mysql_real_escape_string($src['D001E_peso']) . "',
-                             '" . mysql_real_escape_string($src['D001E_altura']) . "',
-                             '" . mysql_real_escape_string($src['D001E_largura']) . "',
-                             '" . mysql_real_escape_string($src['D001E_comprimento']) . "',
-                             NOW(),
-                             '$tipo',
-                             '$obs',
-                             '$tags'";
-                             
-                    if(mysql_query("INSERT INTO D001F ($cols) VALUES ($vals)")) {
-                        $count++;
+    
+        if (!class_exists('API001') && !class_exists('hardness\\API001')) { @require_once('bibliotecas/classes/API001.php'); }
+        if (!class_exists('GMP010') && !class_exists('hardness\\GMP010')) { @require_once('bibliotecas/classes/GMP010.php'); }
+    
+        $successCount = 0;
+        try {
+            $apiClass = class_exists('hardness\\API001') ? 'hardness\\API001' : 'API001';
+            $API001   = new $apiClass();
+            $token    = $API001->executaProcesso(527);
+            $baseUrl  = 'https://api.anymarket.com.br/v2';
+            $gmpClass = class_exists('hardness\\GMP010') ? 'hardness\\GMP010' : 'GMP010';
+            
+            // Reutiliza a global $g['pathDados'] se existir, ou deixa nulo
+            $pathLogs = isset($g['pathDados']) ? $g['pathDados'] : null;
+            $apiManager = new $gmpClass($baseUrl, $token, 3, [], 'error_log', $pathLogs);
+    
+            foreach ($ids as $idMel) {
+                $idMel = (int)$idMel;
+                $rsData = mysql_query("SELECT D001E_D001_Codigo_Produto FROM D001E WHERE D001E_Id = $idMel LIMIT 1");
+                if (!$rsData || mysql_num_rows($rsData) == 0) continue;
+                $rowSync = mysql_fetch_assoc($rsData);
+                $skuSync = trim($rowSync['D001E_D001_Codigo_Produto']);
+    
+                $endpoint = "/products?sku=" . urlencode($skuSync);
+                $resp = $apiManager->request($endpoint, 'GET', null, true, ['return_on_failure' => true]);
+    
+                if ($resp && isset($resp['code']) && $resp['code'] == 200) {
+                    $bodyRaw = isset($resp['body']) ? $resp['body'] : null;
+                    $body = is_array($bodyRaw) ? $bodyRaw : (json_decode($bodyRaw, true) ?: []);
+                    
+                    if (!empty($body['content'][0])) {
+                        $d = $body['content'][0];
+                        $titulo      = mysql_real_escape_string($d['title'] ?? '');
+                        $descricao   = mysql_real_escape_string($d['description'] ?? '');
+                        $garantia    = mysql_real_escape_string($d['warrantyText'] ?? '');
+                        $peso        = mysql_real_escape_string($d['weight'] ?? '');
+                        $altura      = mysql_real_escape_string($d['height'] ?? '');
+                        $largura     = mysql_real_escape_string($d['width'] ?? '');
+                        $comprimento = mysql_real_escape_string($d['length'] ?? '');
+                        $ean         = !empty($d['skus'][0]) ? mysql_real_escape_string($d['skus'][0]['ean'] ?? '') : '';
+                        $marca       = !empty($d['brand']['name']) ? mysql_real_escape_string($d['brand']['name']) : '';
+    
+                        $sets = [
+                            "D001E_Sku_Titulo = '$titulo'", 
+                            "D001E_Descricao = '$descricao'", 
+                            "D001E_Marca = '$marca'", 
+                            "D001E_EAN = '$ean'", 
+                            "D001E_garantia = '$garantia'", 
+                            "D001E_peso = '$peso'", 
+                            "D001E_altura = '$altura'", 
+                            "D001E_largura = '$largura'", 
+                            "D001E_comprimento = '$comprimento'", 
+                            "D001E_ult_att = NOW()"
+                        ];
+                        
+                        if (!empty($d['images']) && is_array($d['images'])) {
+                            for ($i = 1; $i <= 10; $i++) {
+                                $urlImg = isset($d['images'][$i - 1]['url']) ? mysql_real_escape_string($d['images'][$i - 1]['url']) : '';
+                                $sets[] = "D001E_Imagem_$i = '$urlImg'";
+                            }
+                        }
+                        mysql_query("UPDATE D001E SET " . implode(', ', $sets) . " WHERE D001E_Id = $idMel");
+                        $successCount++;
                     }
                 }
             }
+            echo json_encode(['ok' => 1, 'msg' => "$successCount itens sincronizados com sucesso."]);
+        } catch (\Exception $e) {
+            echo json_encode(['ok' => 0, 'msg' => 'Erro: ' . $e->getMessage()]);
         }
-        echo json_encode(['ok' => 1, 'msg' => "$count produtos enviados ($tipo)."]);
         exit;
     }
 
-    // [EXPORTAÇÃO CSV - CORRIGIDA E COM FILTROS]
-    if (isset($_POST['action']) && $_POST['action'] === 'export_csv_mel') {
-        $where = ["1=1"];
+    // [NOVO] SINCRONIZADOR OTIMIZADO (JSON + TRATAMENTO DE ERROS LEGADOS)
+    if (isset($_POST['action']) && $_POST['action'] === 'sync_auto_full_mel') {
+        header('Content-Type: application/json; charset=UTF-8');
+        set_time_limit(180); 
         
-        // --- RESTAURANDO OS FILTROS PERDIDOS ---
+        // Output buffer para engolir warnings do sistema legado
+        ob_start(); 
+        
+        global $g, $confUsuario;
+        $con = @\mysqli_connect($confUsuario['dbHost'], $confUsuario['dbUser'], $confUsuario['dbPass'], $confUsuario['dbDatabase']);
+        
+        // CORREÇÃO CRÍTICA: Definir global para as libs legadas usarem
+        $GLOBALS['g']['conexaoBanco'] = $con;
+
+        if (!$con) {
+            ob_end_clean();
+            echo json_encode(['ok' => 0, 'msg' => 'Sem conexao com banco (mysqli).']); exit;
+        }
+
+        // --- ETAPA 1: FLAGS ---
+        $sqlUpdateForce = "UPDATE D001E e INNER JOIN D001 d ON e.D001E_D001_Id = d.D001_Id SET e.D001E_Flag_Ecommerce = d.D001_Flag_Ecommerce WHERE e.D001E_Flag_Ecommerce IS NULL OR e.D001E_Flag_Ecommerce = '' OR e.D001E_Flag_Ecommerce <> d.D001_Flag_Ecommerce";
+        \mysqli_query($con, $sqlUpdateForce);
+        $totalCorrigidos = \mysqli_affected_rows($con);
+
+        $sqlInsertNovos = "INSERT INTO D001E (D001E_D001_Id, D001E_D001_Codigo_Produto, D001E_Flag_Ecommerce, D001E_ult_att) SELECT d.D001_Id, d.D001_Codigo_Produto, d.D001_Flag_Ecommerce, NOW() FROM D001 d WHERE (d.D001_Flag_Ecommerce = 'S' OR d.D001_Flag_Ecommerce = 's') AND NOT EXISTS (SELECT 1 FROM D001E e WHERE e.D001E_D001_Id = d.D001_Id)";
+        \mysqli_query($con, $sqlInsertNovos);
+        $totalInseridos = \mysqli_affected_rows($con);
+
+        // --- ETAPA 2: POPULADOR ---
+        $details = [];
+        
+        if (!class_exists('hardness\API001') && !class_exists('API001')) { $pathAPI = 'bibliotecas/classes/API001.php'; if (file_exists($pathAPI)) require_once($pathAPI); }
+        if (!class_exists('hardness\GMP010') && !class_exists('GMP010')) { $pathGMP = 'bibliotecas/classes/GMP010.php'; if (file_exists($pathGMP)) require_once($pathGMP); }
+
+        try {
+            $apiClass = class_exists('hardness\API001') ? 'hardness\API001' : 'API001';
+            $API001   = new $apiClass();
+            $token    = $API001->executaProcesso(527);
+            $baseUrl  = 'https://api.anymarket.com.br/v2';
+            $gmpClass = class_exists('hardness\GMP010') ? 'hardness\GMP010' : 'GMP010';
+            $apiManager = new $gmpClass($baseUrl, $token, 3, [], 'error_log', null);
+
+            $delayEntreRequisicoes = 500000;
+            $maxRequests = 40; 
+            $contador = 0;
+
+            while ($contador < $maxRequests) {
+                $sqlBusca = "SELECT * FROM D001E WHERE (D001E_Id_Any IS NULL OR D001E_Id_Any = '') ORDER BY D001E_ult_att ASC LIMIT 1";
+                $rs = \mysqli_query($con, $sqlBusca);
+                if (!$rs || \mysqli_num_rows($rs) == 0) break;
+
+                $atual   = \mysqli_fetch_assoc($rs);
+                $idTable = (int)$atual['D001E_Id'];
+                $idProd  = (int)$atual['D001E_D001_Id'];
+                $sku     = trim($atual['D001E_D001_Codigo_Produto']);
+
+                if (empty($sku)) {
+                    \mysqli_query($con, "UPDATE D001E SET D001E_ult_att = NOW() WHERE D001E_Id = $idTable");
+                    continue;
+                }
+
+                $logItem = ['sku' => $sku, 'idAny' => '-', 'status' => 'Erro', 'msg' => ''];
+                $idAnySku = 0; $tituloSku = ''; $titulo = ''; $descricao = ''; $imagens = []; $marca = ''; $ean = ''; $garantia = ''; $peso = ''; $altura = ''; $largura = ''; $comprimento = '';
+
+                try {
+                    $endpoint = "/products?sku=" . urlencode($sku);
+                    $resp = $apiManager->request($endpoint, 'GET', null, true, ['return_on_failure' => true]);
+                    $contador++;
+
+                    if (isset($resp['code']) && $resp['code'] == 429) {
+                        $logItem['msg'] = 'Rate Limit';
+                        $details[] = $logItem;
+                        break;
+                    }
+
+                    $body = isset($resp['body']) ? (is_array($resp['body']) ? $resp['body'] : json_decode($resp['body'], true)) : [];
+
+                    if (isset($resp['code']) && $resp['code'] == 200 && !empty($body['content'][0])) {
+                        $d = $body['content'][0];
+                        if (isset($d['id']) && is_numeric($d['id'])) $idAnySku = (int) $d['id'];
+                        $titulo    = isset($d['title']) ? $d['title'] : '';
+                        $descricao = isset($d['description']) ? $d['description'] : '';
+                        if (!empty($d['brand']['name'])) $marca = $d['brand']['name'];
+                        elseif (!empty($d['brand']['reducedName'])) $marca = $d['brand']['reducedName'];
+                        elseif (!empty($d['brand']['partnerId'])) $marca = $d['brand']['partnerId'];
+
+                        $garantia    = isset($d['warrantyText']) ? $d['warrantyText'] : '';
+                        $peso        = isset($d['weight']) ? $d['weight'] : '';
+                        $altura      = isset($d['height']) ? $d['height'] : '';
+                        $largura     = isset($d['width']) ? $d['width'] : '';
+                        $comprimento = isset($d['length']) ? $d['length'] : '';
+
+                        if (!empty($d['images']) && is_array($d['images'])) {
+                            foreach ($d['images'] as $img) if (!empty($img['url'])) $imagens[] = $img['url'];
+                        }
+                        if (!empty($d['skus']) && is_array($d['skus'])) {
+                            foreach ($d['skus'] as $s) {
+                                if (isset($s['partnerId']) && $s['partnerId'] == $sku) $tituloSku = isset($s['title']) ? $s['title'] : '';
+                                if (!empty($s['ean']) && empty($ean)) $ean = $s['ean'];
+                            }
+                            if (empty($tituloSku) && !empty($d['skus'][0]['title'])) $tituloSku = $d['skus'][0]['title'];
+                        }
+                        $logItem['status'] = 'Sucesso';
+                        $logItem['idAny'] = $idAnySku;
+                        $logItem['msg'] = 'Encontrado';
+                    } else {
+                        $logItem['msg'] = 'Não encontrado API';
+                    }
+                } catch (\Exception $e) {
+                    $logItem['msg'] = $e->getMessage();
+                }
+
+                // Fallback Imagens e Textos (Mantido lógica original)
+                if (empty($imagens)) {
+                    $r172 = \mysqli_query($con, "SELECT T172_Id, T172_Nome_Arquivo FROM T172 WHERE T172_D001_Id = '$idProd' ORDER BY T172_Nome_Arquivo DESC");
+                    if ($r172) { while ($m = \mysqli_fetch_assoc($r172)) { $ext = pathinfo($m['T172_Nome_Arquivo'], PATHINFO_EXTENSION); $dbName = isset($confUsuario['dbDatabase']) ? $confUsuario['dbDatabase'] : 'e229'; $imagens[] = "/hardness3/dados_usuarios/{$dbName}/produtos/{$idProd}/fotos/{$m['T172_Id']}.$ext"; } }
+                }
+                if (empty($imagens)) {
+                    $r144 = \mysqli_query($con, "SELECT T144_Url FROM T144 WHERE T144_D001_Id = '$idProd'");
+                    if ($r144) { while ($m = \mysqli_fetch_assoc($r144)) { if (!empty($m['T144_Url'])) $imagens[] = $m['T144_Url']; } }
+                }
+                if (empty($titulo) || empty($descricao)) {
+                    $rD = \mysqli_query($con, "SELECT D001_Descricao FROM D001 WHERE D001_Id = '$idProd'");
+                    if ($rD && $r = \mysqli_fetch_assoc($rD)) { if (empty($titulo)) $titulo = $r['D001_Descricao']; if (empty($descricao)) $descricao = $r['D001_Descricao']; }
+                }
+
+                $sets = [];
+                if ($idAnySku > 0) $sets[] = "D001E_Id_Any = $idAnySku";
+                if (!empty($tituloSku)) { $ts = \mysqli_real_escape_string($con, $tituloSku); $sets[] = "D001E_Sku_Titulo = '$ts'"; }
+                $campos = [ 'D001E_Titulo' => $titulo, 'D001E_Descricao' => $descricao, 'D001E_Marca' => $marca, 'D001E_EAN' => $ean, 'D001E_garantia' => $garantia, 'D001E_peso' => $peso, 'D001E_altura' => $altura, 'D001E_largura' => $largura, 'D001E_comprimento' => $comprimento ];
+                foreach ($campos as $col => $val) { if ($val !== $atual[$col]) { $safeVal = \mysqli_real_escape_string($con, $val); $sets[] = "$col = '$safeVal'"; } }
+                $imgsFinal = array_slice($imagens, 0, 10);
+                for ($i = 1; $i <= 10; $i++) { $url = isset($imgsFinal[$i - 1]) ? \mysqli_real_escape_string($con, $imgsFinal[$i - 1]) : ''; $sets[] = "D001E_Imagem_$i = '$url'"; }
+                $sets[] = "D001E_ult_att = NOW()";
+
+                if (!empty($sets)) { $sqlUpdate = "UPDATE D001E SET " . implode(', ', $sets) . " WHERE D001E_Id = $idTable"; \mysqli_query($con, $sqlUpdate); }
+                else { \mysqli_query($con, "UPDATE D001E SET D001E_ult_att = NOW() WHERE D001E_Id = $idTable"); }
+                
+                $details[] = $logItem;
+                usleep($delayEntreRequisicoes);
+            }
+
+        } catch (\Exception $e) {
+            $details[] = ['sku' => '-', 'idAny' => '-', 'status' => 'Fatal', 'msg' => $e->getMessage()];
+        }
+        
+        // Limpa qualquer lixo de output das libs legadas
+        ob_end_clean();
+
+        // Retorna JSON limpo
+        echo json_encode([
+            'ok' => 1, 
+            'summary' => [
+                'flags' => $totalCorrigidos,
+                'novos' => $totalInseridos
+            ],
+            'details' => $details
+        ]);
+        exit;
+    }
+
+    if (isset($_POST['action']) && $_POST['action'] === 'send_correction_mel') {
+        $ids = isset($_POST['ids']) ? $_POST['ids'] : []; if (!is_array($ids)) $ids = explode(',', $ids);
+        $tipo = isset($_POST['tipo']) && in_array($_POST['tipo'], ['mod', 'corr']) ? $_POST['tipo'] : 'corr';
+        $obs = isset($_POST['obs']) ? mysql_real_escape_string($_POST['obs']) : '';
+        $tags = isset($_POST['tags']) ? mysql_real_escape_string($_POST['tags']) : '';
+        $count = 0;
+        foreach ($ids as $idE) {
+            $idE = (int)$idE; if ($idE <= 0) continue;
+            $sqlSrc = "SELECT * FROM D001E WHERE D001E_Id = $idE LIMIT 1"; $rsSrc = mysql_query($sqlSrc);
+            if ($rsSrc && mysql_num_rows($rsSrc) > 0) {
+                $src = mysql_fetch_assoc($rsSrc); $sku = mysql_real_escape_string($src['D001E_D001_Codigo_Produto']);
+                $check = mysql_query("SELECT D001F_Id FROM D001F WHERE D001F_D001_Codigo_Produto = '$sku'");
+                if (mysql_num_rows($check) == 0) {
+                    $cols = "D001F_D001_Id, D001F_D001_Codigo_Produto, D001F_Id_Any, D001F_Titulo, D001F_Marca, D001F_Descricao, D001F_Imagem_1, D001F_Imagem_2, D001F_Imagem_3, D001F_Imagem_4, D001F_Imagem_5, D001F_Imagem_6, D001F_Imagem_7, D001F_Imagem_8, D001F_Imagem_9, D001F_Imagem_10, D001F_EAN, D001F_garantia, D001F_peso, D001F_altura, D001F_largura, D001F_comprimento, D001F_ult_att, D001F_Tipo, D001F_Obs, D001F_tags";
+                    $vals = "'" . mysql_real_escape_string($src['D001E_D001_Id']) . "','" . mysql_real_escape_string($src['D001E_D001_Codigo_Produto']) . "','" . mysql_real_escape_string($src['D001E_Id_Any']) . "','" . mysql_real_escape_string($src['D001E_Sku_Titulo']) . "','" . mysql_real_escape_string($src['D001E_Marca']) . "','" . mysql_real_escape_string($src['D001E_Descricao']) . "','" . mysql_real_escape_string($src['D001E_Imagem_1']) . "','" . mysql_real_escape_string($src['D001E_Imagem_2']) . "','" . mysql_real_escape_string($src['D001E_Imagem_3']) . "','" . mysql_real_escape_string($src['D001E_Imagem_4']) . "','" . mysql_real_escape_string($src['D001E_Imagem_5']) . "','" . mysql_real_escape_string($src['D001E_Imagem_6']) . "','" . mysql_real_escape_string($src['D001E_Imagem_7']) . "','" . mysql_real_escape_string($src['D001E_Imagem_8']) . "','" . mysql_real_escape_string($src['D001E_Imagem_9']) . "','" . mysql_real_escape_string($src['D001E_Imagem_10']) . "','" . mysql_real_escape_string($src['D001E_EAN']) . "','" . mysql_real_escape_string($src['D001E_garantia']) . "','" . mysql_real_escape_string($src['D001E_peso']) . "','" . mysql_real_escape_string($src['D001E_altura']) . "','" . mysql_real_escape_string($src['D001E_largura']) . "','" . mysql_real_escape_string($src['D001E_comprimento']) . "', NOW(), '$tipo', '$obs', '$tags'";
+                    if(mysql_query("INSERT INTO D001F ($cols) VALUES ($vals)")) $count++;
+                }
+            }
+        }
+        echo json_encode(['ok' => 1, 'msg' => "$count produtos enviados ($tipo)."]); exit;
+    }
+
+    if (isset($_POST['action']) && $_POST['action'] === 'export_csv_mel') {
+        $where = ["T1.D001E_Flag_Ecommerce = 'S'"];
         if (!empty($_POST['f_tit'])) { $w = getSmartWhereMel("T1.D001E_Sku_Titulo", $_POST['f_tit'], 'text'); if($w) $where[] = $w; }
         if (!empty($_POST['f_id_any'])) { $w = getSmartWhereMel("T1.D001E_Id_Any", $_POST['f_id_any'], 'number'); if($w) $where[] = $w; }
         if (!empty($_POST['f_sku'])) { $w = getSmartWhereMel("T1.D001E_D001_Codigo_Produto", $_POST['f_sku'], 'text'); if($w) $where[] = $w; }
@@ -454,88 +574,42 @@ if ($isAjax) {
         if (!empty($_POST['f_sc_spec'])) { $w = getSmartWhereMel("T1.D001E_pont_espec", $_POST['f_sc_spec'], 'number'); if($w) $where[] = $w; }
 
         $whereStr = implode(" AND ", $where);
-        
-        $sqlCsv = "SELECT T1.* FROM D001E AS T1
-                   LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001E_D001_Id
-                   LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id)
-                   WHERE $whereStr GROUP BY T1.D001E_Id ORDER BY T1.D001E_Id ASC";
+        $sqlCsv = "SELECT T1.* FROM D001E AS T1 LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001E_D001_Id LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id) WHERE $whereStr GROUP BY T1.D001E_Id ORDER BY T1.D001E_Id ASC";
         $rsCsv = mysql_query($sqlCsv);
-        
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename=produtos_quality_'.date('YmdHis').'.csv');
-        $out = fopen('php://output', 'w');
-        fputs($out, "\xEF\xBB\xBF");
-        
-        $header = ['D001E_Id','D001E_Id_Any','D001E_D001_Id','D001E_D001_Codigo_Produto','D001E_Sku_Titulo','D001E_Marca','D001E_Descricao','D001E_Imagem_1','D001E_Imagem_2','D001E_Imagem_3','D001E_Imagem_4','D001E_Imagem_5','D001E_Imagem_6','D001E_Imagem_7','D001E_Imagem_8','D001E_Imagem_9','D001E_Imagem_10','D001E_Status_Pontuacao','D001E_EAN','D001E_garantia','D001E_peso','D001E_alturavarchar','D001E_larguravarchar','D001E_comprimentovarchar','D001E_ult_att','D001E_pont_titulo','D001E_pont_desc','D001E_pont_img','D001E_pont_espec'];
+        $out = fopen('php://output', 'w'); fputs($out, "\xEF\xBB\xBF");
+        $header = ['D001E_Id','D001E_Id_Any','D001E_D001_Id','D001E_D001_Codigo_Produto','D001E_Sku_Titulo','D001E_Marca','D001E_Descricao','D001E_Imagem_1','D001E_Imagem_2','D001E_Imagem_3','D001E_Imagem_4','D001E_Imagem_5','D001E_Imagem_6','D001E_Imagem_7','D001E_Imagem_8','D001E_Imagem_9','D001E_Imagem_10','D001E_Status_Pontuacao','D001E_EAN','D001E_garantia','D001E_peso','D001E_altura','D001E_largura','D001E_comprimento','D001E_ult_att','D001E_pont_titulo','D001E_pont_desc','D001E_pont_img','D001E_pont_espec'];
         fputcsv($out, $header, ';');
-        
         function simpleCleanMel($str) { if(is_null($str)) return ''; $str = str_replace(["\r\n", "\r", "\n", "\t"], ' ', $str); return trim($str); }
-        
-        // TRUQUE EXCEL: Formata como fórmula para forçar texto (="123")
-        function excelSafe($val) {
-            $val = simpleCleanMel($val);
-            if(is_numeric($val) && strlen($val) > 8) return '="' . $val . '"';
-            return $val;
-        }
-        
+        function excelSafe($val) { $val = simpleCleanMel($val); if(is_numeric($val) && strlen($val) > 8) return '="' . $val . '"'; return $val; }
         if ($rsCsv) {
             while ($row = mysql_fetch_assoc($rsCsv)) {
-                $line = [
-                    $row['D001E_Id'], $row['D001E_Id_Any'], $row['D001E_D001_Id'],
-                    excelSafe($row['D001E_D001_Codigo_Produto']), // Protegido
-                    simpleCleanMel($row['D001E_Sku_Titulo']),
-                    simpleCleanMel($row['D001E_Marca']), simpleCleanMel($row['D001E_Descricao']),
-                    $row['D001E_Imagem_1'], $row['D001E_Imagem_2'], $row['D001E_Imagem_3'], $row['D001E_Imagem_4'], $row['D001E_Imagem_5'],
-                    $row['D001E_Imagem_6'], $row['D001E_Imagem_7'], $row['D001E_Imagem_8'], $row['D001E_Imagem_9'], $row['D001E_Imagem_10'],
-                    $row['D001E_Status_Pontuacao'],
-                    excelSafe($row['D001E_EAN']), // Protegido
-                    simpleCleanMel($row['D001E_garantia']),
-                    simpleCleanMel($row['D001E_peso']), simpleCleanMel($row['D001E_altura']), simpleCleanMel($row['D001E_largura']),
-                    simpleCleanMel($row['D001E_comprimento']), $row['D001E_ult_att'],
-                    $row['D001E_pont_titulo'], $row['D001E_pont_desc'], $row['D001E_pont_img'], $row['D001E_pont_espec']
-                ];
+                $line = [$row['D001E_Id'], $row['D001E_Id_Any'], $row['D001E_D001_Id'], excelSafe($row['D001E_D001_Codigo_Produto']), simpleCleanMel($row['D001E_Sku_Titulo']), simpleCleanMel($row['D001E_Marca']), simpleCleanMel($row['D001E_Descricao']), $row['D001E_Imagem_1'], $row['D001E_Imagem_2'], $row['D001E_Imagem_3'], $row['D001E_Imagem_4'], $row['D001E_Imagem_5'], $row['D001E_Imagem_6'], $row['D001E_Imagem_7'], $row['D001E_Imagem_8'], $row['D001E_Imagem_9'], $row['D001E_Imagem_10'], $row['D001E_Status_Pontuacao'], excelSafe($row['D001E_EAN']), simpleCleanMel($row['D001E_garantia']), simpleCleanMel($row['D001E_peso']), simpleCleanMel($row['D001E_altura']), simpleCleanMel($row['D001E_largura']), simpleCleanMel($row['D001E_comprimento']), $row['D001E_ult_att'], $row['D001E_pont_titulo'], $row['D001E_pont_desc'], $row['D001E_pont_img'], $row['D001E_pont_espec']];
                 fputcsv($out, $line, ';');
             }
         }
-        fclose($out);
-        exit;
+        fclose($out); exit;
     }
 
     header('Content-Type: application/json; charset=UTF-8');
 
     if (isset($_POST['action']) && $_POST['action'] === 'get_details_mel') {
         $skuBusca = isset($_POST['sku']) ? mysql_real_escape_string($_POST['sku']) : '';
-        $sqlDet = "SELECT T1.*, T2.D009_Frequencia_Venda, T2.D009_Valor_Custo_Unitario, T2.D009_Quantidade_Estoque_Tabela, T2.D009_Quantidade_Estoque_Liquido
-                        FROM D001E AS T1
-                        LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001E_D001_Id
-                        LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id)
-                        WHERE T1.D001E_D001_Codigo_Produto = '$skuBusca' LIMIT 1";
+        $sqlDet = "SELECT T1.*, T2.D009_Frequencia_Venda, T2.D009_Valor_Custo_Unitario, T2.D009_Quantidade_Estoque_Tabela, T2.D009_Quantidade_Estoque_Liquido FROM D001E AS T1 LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001E_D001_Id LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id) WHERE T1.D001E_D001_Codigo_Produto = '$skuBusca' AND T1.D001E_Flag_Ecommerce = 'S' LIMIT 1";
         $rsDet  = mysql_query($sqlDet);
         if ($rsDet && mysql_num_rows($rsDet) > 0) {
-            $row = mysql_fetch_assoc($rsDet);
-            $marca = isset($row['D001E_Marca']) ? $row['D001E_Marca'] : '';
-            $resT = analiseTituloMel($row['D001E_Sku_Titulo']);
-            $resD = analiseDescricaoMel($row['D001E_Descricao']);
-            $resI = analiseImagensMel($row);
-            $resA = analiseAtributosMel($row);
-            $imgs = [];
-            for ($i = 1; $i <= 10; $i++) if (!empty($row["D001E_Imagem_$i"])) $imgs[] = $row["D001E_Imagem_$i"];
+            $row = mysql_fetch_assoc($rsDet); $marca = isset($row['D001E_Marca']) ? $row['D001E_Marca'] : '';
+            $resT = analiseTituloMel($row['D001E_Sku_Titulo']); $resD = analiseDescricaoMel($row['D001E_Descricao']); $resI = analiseImagensMel($row); $resA = analiseAtributosMel($row);
+            $imgs = []; for ($i = 1; $i <= 10; $i++) if (!empty($row["D001E_Imagem_$i"])) $imgs[] = $row["D001E_Imagem_$i"];
             if (empty($imgs)) $imgs[] = "https://via.placeholder.com/600x600?text=Sem+Imagem";
-            $specs = [
-                'EAN' => $row['D001E_EAN'] ?? '', 'Garantia' => $row['D001E_garantia'] ?? '',
-                'Peso' => $row['D001E_peso'] ? $row['D001E_peso'] . ' kg' : '',
-                'Altura' => $row['D001E_altura'] ? $row['D001E_altura'] . ' cm' : '',
-                'Largura' => $row['D001E_largura'] ? $row['D001E_largura'] . ' cm' : '',
-                'Comprimento' => $row['D001E_comprimento'] ? $row['D001E_comprimento'] . ' cm' : '',
-            ];
-            echo json_encode(['ok' => 1, 'titulo' => $row['D001E_Sku_Titulo'], 'sku' => $row['D001E_D001_Codigo_Produto'], 'marca' => $marca, 'desc' => $row['D001E_Descricao'], 'imgs' => $imgs, 'specs' => $specs,
-                'scores' => ['tit' => $resT['nota'], 'desc' => $resD['nota'], 'img' => $resI['nota'], 'attr' => $resA['nota']]
-            ]);
+            $specs = ['EAN' => $row['D001E_EAN'] ?? '', 'Garantia' => $row['D001E_garantia'] ?? '', 'Peso' => $row['D001E_peso'] ? $row['D001E_peso'] . ' kg' : '', 'Altura' => $row['D001E_altura'] ? $row['D001E_altura'] . ' cm' : '', 'Largura' => $row['D001E_largura'] ? $row['D001E_largura'] . ' cm' : '', 'Comprimento' => $row['D001E_comprimento'] ? $row['D001E_comprimento'] . ' cm' : ''];
+            echo json_encode(['ok' => 1, 'titulo' => $row['D001E_Sku_Titulo'], 'sku' => $row['D001E_D001_Codigo_Produto'], 'marca' => $marca, 'desc' => $row['D001E_Descricao'], 'imgs' => $imgs, 'specs' => $specs, 'scores' => ['tit' => $resT['nota'], 'desc' => $resD['nota'], 'img' => $resI['nota'], 'attr' => $resA['nota']]]);
         } else { echo json_encode(['ok' => 0, 'msg' => 'Produto não encontrado']); }
         exit;
     }
 
-    $where = ["1=1"];
+    $where = ["T1.D001E_Flag_Ecommerce = 'S'"];
     if (!empty($_POST['f_tit'])) { $w = getSmartWhereMel("T1.D001E_Sku_Titulo", $_POST['f_tit'], 'text'); if($w) $where[] = $w; }
     if (!empty($_POST['f_id_any'])) { $w = getSmartWhereMel("T1.D001E_Id_Any", $_POST['f_id_any'], 'number'); if($w) $where[] = $w; }
     if (!empty($_POST['f_sku'])) { $w = getSmartWhereMel("T1.D001E_D001_Codigo_Produto", $_POST['f_sku'], 'text'); if($w) $where[] = $w; }
@@ -558,15 +632,11 @@ if ($isAjax) {
     $rsCount = mysql_query($sqlCount);
     if ($rsCount) { $r = mysql_fetch_assoc($rsCount); $totalRows = (int) ($r['total'] ?? 0); }
 
-    $sql = "SELECT T1.*, T2.D009_Frequencia_Venda, T2.D009_Valor_Custo_Unitario, T2.D009_Quantidade_Estoque_Tabela, T2.D009_Quantidade_Estoque_Liquido
-            FROM D001E AS T1 LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001E_D001_Id LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id)
-            WHERE $whereStr GROUP BY T1.D001E_Id ORDER BY T1.D001E_Id ASC LIMIT $limit OFFSET $offset";
+    $sql = "SELECT T1.*, T2.D009_Frequencia_Venda, T2.D009_Valor_Custo_Unitario, T2.D009_Quantidade_Estoque_Tabela, T2.D009_Quantidade_Estoque_Liquido FROM D001E AS T1 LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001E_D001_Id LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id) WHERE $whereStr GROUP BY T1.D001E_Id ORDER BY T1.D001E_Id ASC LIMIT $limit OFFSET $offset";
     $rs = mysql_query($sql);
     $html = "";
     if ($rs) { while ($row = mysql_fetch_assoc($rs)) { $html .= renderQualityRowMel($row); } }
-
-    echo json_encode(['ok' => 1, 'total' => $totalRows, 'page' => $page, 'pageSize' => $limit, 'html' => $html]);
-    exit;
+    echo json_encode(['ok' => 1, 'total' => $totalRows, 'page' => $page, 'pageSize' => $limit, 'html' => $html]); exit;
 }
 
 // =============================================================================
@@ -577,7 +647,6 @@ $style = <<<STYLE
     :root { --bg-body: #f3f4f6; --card-bg: #ffffff; --text-color: #1f2937; --border-color: #e5e7eb; --score-6: #0098D3; --score-5: #10b981; --score-4: #84cc16; --score-3: #eab308; --score-2: #fca5a5; --score-1: #ef4444; --primary: #0098D3; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background-color: var(--bg-body); margin: 0; padding: 20px; color: var(--text-color); }
     .quality-list { max-width: 1600px; margin: 0 auto; margin-top: 20px; }
-    
     .filter-container { background: #fff; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 16px; margin-bottom: 20px; max-width: 1570px; margin: 0 auto 20px auto; border: 1px solid #e5e7eb; }
     .filter-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
     .filter-title { font-size: 14px; font-weight: 700; color: #374151; display:flex; align-items:center; gap:8px; text-transform:uppercase; letter-spacing:0.05em; }
@@ -586,85 +655,52 @@ $style = <<<STYLE
     .filter-body { display: block; margin-top: 15px; border-top: 1px solid #f3f4f6; padding-top: 15px; }
     .filter-body.closed { display: none; }
     .filter-header.closed .filter-chevron { transform: rotate(-90deg); }
-    
     .f-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
     .f-group { display: flex; flex-direction: column; gap: 4px; }
     .f-label { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; }
     .f-input { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 12px; outline: none; transition: all 0.2s; width: 100%; }
     .f-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(0, 152, 211, 0.15); }
     .f-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f3f4f6; gap: 10px; }
-    
     .f-btn-apply { background: var(--primary); color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
     .f-btn-apply:hover { background: #acc2ff; }
-    
-    /* [NOVO] BOTÃO LIMPAR */
     .f-btn-clear { background: #ef4444; color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
     .f-btn-clear:hover { background: #ff8282; }
-    
     .f-btn-export { background: #10b981; color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
     .f-btn-export:hover { background: #10b981; }
-
     .f-btn-send { background: #f59e0b; color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
     .f-btn-send:hover { background: #8bc92c; }
-    
-    .f-btn-send-single { background: #f59e0b; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+    .f-btn-sync { background: #6366f1; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
+    .f-btn-sync:hover { background: #818cf8; }
+    .f-btn-sync_i { background: #6366f1; color: #fff; border: none; padding: 6px 12px !important; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
+    .f-btn-sync_i:hover { background: #818cf8; }
+    .f-btn-send-single { background: #f59e0b; color: #fff; border: none; padding: 6px 12px !important; border-radius: 8px; cursor: pointer; transition: 0.2s; }
     .f-btn-send-single:hover { background: #d97706; }
-
-    /* --- LAYOUT GRID ISOLADO (_mel) --- */
-    .quality-header-mel, .quality-row-mel { 
-        display: grid; 
-        grid-template-columns: 30px 70px 1.4fr 1fr 1.2fr 0.8fr 40px 40px 40px 40px 70px 60px; 
-        gap: 8px; 
-        align-items: center; 
-    }
-    
-    .quality-header-mel { 
-        position: sticky; top: 0; z-index: 50; 
-        background: #f9fafb; border-bottom: 2px solid #e5e7eb;
-        padding: 12px 16px; 
-        font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.03em; 
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    
+    .quality-header-mel, .quality-row-mel { display: grid; grid-template-columns: 30px 70px 1.4fr 1fr 1.2fr 0.8fr 40px 40px 40px 40px 70px 60px; gap: 8px; align-items: center; }
+    .quality-header-mel { position: sticky; top: 0; z-index: 50; background: #f9fafb; border-bottom: 2px solid #e5e7eb; padding: 12px 16px; font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.03em; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     .quality-header-mel > div { display: flex; align-items: center; justify-content: center; text-align: center; }
     .quality-header-mel > div:nth-child(3), .quality-header-mel > div:nth-child(5), .quality-header-mel > div:nth-child(6) { justify-content: flex-start; text-align: left; }
-    
     .quality-row-mel { background: var(--card-bg); border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 14px 16px; margin-bottom: 10px; border: 1px solid transparent; transition: all 0.2s; }
     .quality-row-mel:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-color: #d1d5db; }
-    
     .thumb-box { width: 64px; height: 64px; border-radius: 8px; border: 1px solid #e5e7eb; padding: 3px; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .thumb-box img { width: 100%; height: 100%; object-fit: contain; }
-    
-    /* COL INFO CENTRALIZADA */
     .col-info { display: flex; flex-direction: column; gap: 4px; overflow: visible !important; justify-content: center; }
     .prod-title { font-size: 13px; font-weight: 600; color: #111827; line-height: 1.3; }
     .prod-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .prod-sku { font-size: 10px; color: #4b5563; background: #f3f4f6; padding: 2px 6px; border-radius: 8px; font-family: monospace; border: 1px solid #e5e7eb; }
     .prod-brand { font-size: 10px; font-weight: 700; color: var(--primary); white-space: nowrap; }
-    
-    /* BADGES */
     .badge-any { font-size: 10px; color: #fff; background: #FF600F; padding: 2px 6px; border-radius: 8px; font-family: monospace; border: 1px solid #e65100; font-weight: 700; }
     .badge-sku { font-size: 10px; color: #fff; background: #089BD4; padding: 2px 6px; border-radius: 8px; font-family: monospace; border: 1px solid #0284c7; font-weight: 700; }
     .badge-brand { font-size: 10px; color: #374151; background: #f3f4f6; padding: 2px 6px; border-radius: 8px; border: 1px solid #d1d5db; font-weight: 700; }
-
     .col-metrics { display: block; grid-template-columns: 1fr 1fr; gap: 4px 10px; background: #f9fafb; padding: 6px 10px; border-radius: 8px; border: 1px solid #f3f4f6; min-height: 140px; place-self: anchor-center; align-content: center; }
     .metric-cell { display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding-top: 10px; padding-bottom: 10px;}
     .metric-cell .lbl { color: #9ca3af; font-size: 11px; font-weight: 600; text-transform: uppercase; margin-right: 50px; }
     .metric-cell .val { color: #374151; }
-    
-    /* BASE SCROLL CLASS */
     .col-box-scroll { font-size: 11px; color: #4b5563; background: #fff; padding: 4px; line-height: 1.4; border-radius: 8px; border: 1px solid #f3f4f6; box-shadow: inherit; text-align: left; }
-    
-    /* DESC: SCROLL */
     .desc-scroll-mel { max-height: 80px; overflow-y: auto; min-height: 140px;}
-    
-    /* SPEC: AUTO STACKED */
     .spec-auto-mel { height: auto; overflow: visible; display: flex; flex-direction: column; min-height: 140px;}
     .spec-auto-mel span { display: block; border-bottom: 1px solid #f9fafb; padding: 2px 0; }
-
     .col-box-scroll::-webkit-scrollbar { width: 3px; }
     .col-box-scroll::-webkit-scrollbar-thumb { background: #d1d5db; }
-    
     .mini-score-box { display: flex; flex-direction: column; align-items: center; cursor: help; }
     .mini-score-val { width: 28px; height: 28px; border-radius: 8px; background: #e5e7eb; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
     .col-score { display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -672,7 +708,6 @@ $style = <<<STYLE
     .score-circle::before { content: ""; position: absolute; width: 34px; height: 34px; border-radius: 50%; background: #ffffff; }
     .score-number { position: relative; font-size: 14px; font-weight: 800; z-index: 1; color: #111827; }
     .score-label { font-size: 9px; font-weight: 700; color: #6b7280; text-transform: uppercase; }
-    
     #hardness-custom-tooltip { background: #ffffff; border: 1px solid #e4e6eb; box-shadow: 0 8px 20px rgba(0,0,0,0.15); border-radius: 8px; padding: 0; z-index: 999999; font-size: 12px; color: #111827; min-width: 230px; }
     .tt-table { width: 100%; border-collapse: collapse; }
     .tt-head { background: #f3f4f6; padding: 8px 12px; font-weight: 700; font-size: 11px; text-transform: uppercase; text-align: left; color: #4b5563; }
@@ -704,45 +739,37 @@ $style = <<<STYLE
     #demoMel.active { display: flex; }
     #demoMel .pg-btn { border: 1px solid #d1d5db; background:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; color:#374151; }
     #demoMel .pg-btn.active { background: var(--primary); border-color: var(--primary); color:#fff; }
-    
     @media (max-width: 1200px) { 
         .f-grid { grid-template-columns: repeat(4, 1fr); }
         .quality-header-mel, .quality-row-mel { grid-template-columns: 30px 60px 1.4fr 160px 1.5fr 1fr 60px; gap: 8px; }
         .col-metrics { grid-template-columns: 1fr; gap: 2px; }
     }
-    
-    /* MODAL TIPO ENVIO */
-    .btn-sel-type {
-        border: 2px solid #e5e7eb; background: #fff; padding: 20px; border-radius: 8px;
-        font-size: 14px; font-weight: 700; color: #374151; cursor: pointer; transition: all 0.2s;
-        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-        width: 140px; height: 120px;
-    }
+    .btn-sel-type { border: 2px solid #e5e7eb; background: #fff; padding: 20px; border-radius: 8px; font-size: 14px; font-weight: 700; color: #374151; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 140px; height: 120px; }
     .btn-sel-type:hover { border-color: var(--primary); background: #f0f9ff; color: var(--primary); transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
     .btn-sel-type i { font-size: 32px; color: #9ca3af; transition: color 0.2s; }
     .btn-sel-type:hover i { color: var(--primary); }
-
-    /* [NOVO] MODAL OBS CORREÇÃO - MODERNIZADO */
     .obs-wrapper { width:100%; display:flex; flex-direction:column; gap:15px; position: relative; }
-    .obs-input { 
-        width:100%; min-height:150px; max-height: 150px; overflow-y: auto; 
-        border:1px solid #d1d5db; border-radius:8px; padding:1px; font-size:14px; color:#374151; 
-        outline:none; transition:0.2s; font-family:inherit; background:#fff; line-height:1.5;
-    }
+    .obs-input { width:100%; min-height:150px; max-height: 150px; overflow-y: auto; border:1px solid #d1d5db; border-radius:8px; padding:1px; font-size:14px; color:#374151; outline:none; transition:0.2s; font-family:inherit; background:#fff; line-height:1.5; }
     .obs-input:focus { border-color:var(--primary); box-shadow:0 0 0 4px rgba(0,152,211,0.1); }
     .obs-input:empty:before { content: attr(data-placeholder); color: #9ca3af; font-style: italic; }
-    
-    .char-counter { 
-        position: absolute; bottom: 10px; right: 15px; font-size: 11px; font-weight: 800; 
-        background: rgba(255,255,255,0.9); padding: 2px 6px; border-radius: 8px;
-    }
-    .char-green { color: #10b981; }
-    .char-red { color: #ef4444; }
-
+    .char-counter { position: absolute; bottom: 10px; right: 15px; font-size: 11px; font-weight: 800; background: rgba(255,255,255,0.9); padding: 2px 6px; border-radius: 8px; }
+    .char-green { color: #10b981; } .char-red { color: #ef4444; }
     .tag-grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
     .tag-check-item { display:flex; align-items:center; gap:8px; font-size:13px; color:#374151; cursor:pointer; padding:8px 10px; border:1px solid #e5e7eb; border-radius:6px; transition:0.1s; }
     .tag-check-item:hover { background:#f9fafb; border-color:#d1d5db; }
     .tag-check-item input { width:16px; height:16px; cursor:pointer; accent-color:var(--primary); }
+
+    /* [NOVO] ESTILO MODAL RESULTADO */
+    .res-dash-cards { display:flex; gap:15px; margin-bottom:20px; }
+    .res-card { flex:1; background:#f9fafb; border:1px solid #e5e7eb; padding:15px; border-radius:8px; text-align:center; }
+    .res-card-val { font-size:24px; font-weight:800; color:var(--primary); }
+    .res-card-lbl { font-size:11px; color:#6b7280; text-transform:uppercase; font-weight:600; margin-top:5px; }
+    .res-table-wrap { flex:1; overflow-y:auto; border:1px solid #e5e7eb; border-radius:8px; }
+    .res-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .res-table th { background:#f3f4f6; text-align:left; padding:10px; font-weight:700; color:#374151; position:sticky; top:0; }
+    .res-table td { padding:8px 10px; border-bottom:1px solid #f3f4f6; color:#4b5563; }
+    .st-badge { padding:2px 8px; border-radius:12px; font-size:10px; font-weight:700; color:#fff; }
+    .st-ok { background:#10b981; } .st-err { background:#ef4444; }
 </style>
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 STYLE;
@@ -753,7 +780,6 @@ $tipDesc = "<div class='header-tooltip-content'><div class='header-tooltip-title
 $tipImg  = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: IMAGENS (Peso 3)</div><div class='header-rule-row'><span>< 2 imgs</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>2 imgs</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>3 a 4 imgs</span><span style='color:#10b981'>4</span></div><div class='header-rule-row'><span>5 a 10 imgs</span><span style='color:#0098D3'>5</span></div><div class='header-rule-row'><span>> 10 imgs</span><span style='color:#ef4444'>0</span></div></div>";
 $tipSpec = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: ATRIBUTOS (Peso 1)</div><div class='header-rule-row'><span>< 2 itens</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>2 a 3 itens</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>4 a 6 itens</span><span style='color:#10b981'>4</span></div><div class='header-rule-row'><span>7 a 19 itens</span><span style='color:#0098D3'>5</span></div></div>";
 
-// IDs com SUFIXO _mel
 echo "
 <div class='filter-container'>
     <div class='filter-header' onclick='toggleFilterBodyMel()'>
@@ -783,12 +809,12 @@ echo "
             <button class='f-btn-clear' onclick='clearFiltersMel()' title='Limpar'><i class='material-icons'>backspace</i></button>
             <button class='f-btn-export' onclick='exportCSVMel()' title='Exportar CSV'><i class='material-icons'>file_download</i></button>
             <button class='f-btn-send' onclick='enviarCorrecaoMassaMel()' title='Enviar Selecionados'><i class='material-icons'>playlist_add_check</i></button>
+            <button class='f-btn-sync' onclick='openSyncModalMel()' title='Sincronizar Tudo'><i class='material-icons'>sync</i></button>
         </div>
     </div>
 </div>";
 
 echo "<div class='quality-list'>";
-// NOTE HEADER FIXO com layout de 9 colunas e class _mel
 echo "<div class='quality-header-mel'>
         <div style='cursor:pointer' onclick='toggleSelectAllMel()' title='Selecionar Todos'><i class='material-icons' style='font-size:16px'>check_box</i></div>
         <div>Foto</div><div>Produto / Marca</div><div>Métricas</div><div>Descrição</div><div>Especificações</div>
@@ -804,11 +830,9 @@ echo "<div id='contentMel'><div class='start-msg' style='text-align:center; padd
 
 $ajaxUrl  = isset($_SERVER['REQUEST_URI']) ? htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES, 'UTF-8') : '';
 $sysDivId = isset($g['divId']) ? $g['divId'] : 'contentMel';
-// SUFIXO _mel nos Inputs Hidden
 echo "<input type='hidden' id='hardness_total_mel' value='0'>";
 echo "<input type='hidden' id='hardness_pageSize_mel' value='" . (int) $limit . "'>";
 echo "<input type='hidden' id='hardness_ajaxUrl_mel' value='" . $ajaxUrl . "'>";
-// [CORREÇÃO] Adicionado Inputs para passar o Contexto
 echo "<input type='hidden' id='sys_base_divRoot_mel' value='" . $gDivRoot . "'>";
 echo "<input type='hidden' id='sys_base_divId_mel' value='" . $gDivId . "'>";
 echo "<div id='demoMel'></div></div>";
@@ -840,7 +864,6 @@ echo "<div id='demoMel'></div></div>";
              <h2 style="font-size:16px; font-weight:700; color:#111827; margin:0;">Detalhes da Correção</h2>
              <span class="close-modal" onclick="cancelarEnvioMel()">×</span>
         </div>
-        
         <div class="obs-wrapper">
              <div>
                 <label style="font-size:12px; font-weight:600; color:#374151; margin-bottom:8px; display:block;">Tags (Motivo)</label>
@@ -860,7 +883,6 @@ echo "<div id='demoMel'></div></div>";
                 <div class="char-counter char-green" id="charCounterMel">0 / 500</div>
              </div>
         </div>
-
         <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:10px;">
              <button class="f-btn-export" onclick="cancelarEnvioMel()" style="border:1px solid #d1d5db; color:#374151;">Cancelar</button>
              <button class="f-btn-send" onclick="finalizarEnvioCorrecao()">Confirmar Envio</button>
@@ -879,6 +901,51 @@ echo "<div id='demoMel'></div></div>";
             <div class="vis-header-row"><span>Descrição do Produto</span><span class="vis-chip" id="visDescScoreMel">--</span></div>
             <div class="vis-desc-box" id="visDescMel"></div>
             <div class="vis-specs-container"><div class="vis-header-row" style="margin-top:15px"><span>Especificações</span><span class="vis-chip" id="visAttrScoreMel">--</span></div><div id="visSpecsContentMel"></div></div>
+        </div>
+    </div>
+</div>
+
+<div id="modalConfirmSyncMel" class="modal-overlay" onclick="if(event.target==this) fecharSyncModalMel()">
+    <div class="modal-content" style="max-width: 450px; height: auto; flex-direction: column; align-items: center; padding: 30px; gap: 20px;">
+        <span class="close-modal" onclick="fecharSyncModalMel()">×</span>
+        <div style="text-align:center;">
+            <h2 style="font-size:18px; color:#111827; margin:0 0 10px 0;">Sincronização Completa</h2>
+            <p style="font-size:13px; color:#6b7280; margin:0;">Isso atualizará flags e buscará dados no AnyMarket. O processo pode demorar alguns instantes.</p>
+        </div>
+        <div style="display:flex; gap: 10px; width: 100%; justify-content: center;">
+            <button class="f-btn-export" onclick="fecharSyncModalMel()" style="border:1px solid #d1d5db; color:#374151;">Cancelar</button>
+            <button class="f-btn-send" onclick="executarSyncFullMel()">Confirmar</button>
+        </div>
+    </div>
+</div>
+
+<div id="modalResSyncMel" class="modal-overlay">
+    <div class="modal-content" style="max-width: 600px; height: 80%; flex-direction: column; padding: 25px; gap: 15px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e5e7eb; padding-bottom:10px;">
+             <h2 style="font-size:16px; font-weight:700; color:#111827; margin:0;">Relatório de Sincronização</h2>
+             <span class="close-modal" onclick="fecharResSyncMel()">×</span>
+        </div>
+        
+        <div class="res-dash-cards">
+            <div class="res-card">
+                <div class="res-card-val" id="cntFlags">0</div>
+                <div class="res-card-lbl">Flags Corrigidas</div>
+            </div>
+            <div class="res-card">
+                <div class="res-card-val" id="cntNovos">0</div>
+                <div class="res-card-lbl">Novos Inseridos</div>
+            </div>
+        </div>
+
+        <div class="res-table-wrap">
+            <table class="res-table">
+                <thead><tr><th>SKU</th><th>ID AnyMarket</th><th>Status</th></tr></thead>
+                <tbody id="tblSyncDetails"></tbody>
+            </table>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end;">
+             <button class="f-btn-sync" onclick="fecharResSyncMel()" style="background:#374151;">Fechar</button>
         </div>
     </div>
 </div>
@@ -937,20 +1004,15 @@ echo "<div id='demoMel'></div></div>";
             var pageSizeVal = jQuery('#hardness_pageSize_mel').val();
             var urlVal      = jQuery('#hardness_ajaxUrl_mel').val();
             var sysIdVal    = jQuery('#sys_base_divId_mel').val();
-            var sysRootVal  = jQuery('#sys_base_divRoot_mel').val(); // [CORREÇÃO] Recupera root
-            
+            var sysRootVal  = jQuery('#sys_base_divRoot_mel').val();
             p = parseInt(p, 10) || 1; 
             var filters = this.getFilters(); 
             var size = parseInt(pageSizeVal, 10) || 50; 
             if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
-            
-            // [CORREÇÃO] Envia sys_divRoot e sys_divId de volta
             jQuery.ajax({ 
                 url: urlVal, type: 'POST', dataType: 'json', 
                 data: jQuery.extend({ ajax: 1, page: p, pageSize: size, sys_divRoot: sysRootVal, sys_divId: sysIdVal }, filters), 
-                success: function (r) { 
-                    if (r && r.ok) { jQuery('#contentMel').html(r.html); pagerMel.render('demoMel', r.total, p, size, 'appMel.loadData'); } else { jQuery('#contentMel').html('<div class="start-msg">Sem resultados</div>'); jQuery('#demoMel').removeClass('active').html(''); } 
-                }, 
+                success: function (r) { if (r && r.ok) { jQuery('#contentMel').html(r.html); pagerMel.render('demoMel', r.total, p, size, 'appMel.loadData'); } else { jQuery('#contentMel').html('<div class="start-msg">Sem resultados</div>'); jQuery('#demoMel').removeClass('active').html(''); } }, 
                 complete: function () { if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); } 
             });
         }
@@ -958,79 +1020,25 @@ echo "<div id='demoMel'></div></div>";
     
     function applyFiltersMel() { appMel.loadData(1); }
     function clearFiltersMel() { jQuery('#filterBodyMel input').val(''); jQuery('#filterBodyMel select').val(''); }
-    
     function exportCSVMel() {
-        var filters = appMel.getFilters(); 
-        var url = jQuery('#hardness_ajaxUrl_mel').val();
-        var form = document.createElement('form'); form.method = 'POST'; form.action = url; form.target = '_blank';
-        var i1 = document.createElement('input'); i1.name = 'ajax'; i1.value = '1'; form.appendChild(i1);
-        var i2 = document.createElement('input'); i2.name = 'action'; i2.value = 'export_csv_mel'; form.appendChild(i2);
+        var filters = appMel.getFilters(); var url = jQuery('#hardness_ajaxUrl_mel').val(); var form = document.createElement('form'); form.method = 'POST'; form.action = url; form.target = '_blank';
+        var i1 = document.createElement('input'); i1.name = 'ajax'; i1.value = '1'; form.appendChild(i1); var i2 = document.createElement('input'); i2.name = 'action'; i2.value = 'export_csv_mel'; form.appendChild(i2);
         for (var key in filters) { if (filters.hasOwnProperty(key)) { var inp = document.createElement('input'); inp.name = key; inp.value = filters[key]; form.appendChild(inp); } }
         document.body.appendChild(form); form.submit(); document.body.removeChild(form);
     }
     
     var idsPendingMel = [];
     function fecharModalTipoMel() { document.getElementById('modalTipoEnvioMel').style.display = 'none'; }
-    function cancelarEnvioMel() {
-        document.getElementById('modalTipoEnvioMel').style.display = 'none';
-        document.getElementById('modalObsCorrecaoMel').style.display = 'none';
-        idsPendingMel = [];
-        jQuery('#txtObsCorrecao').text('');
-        jQuery('.chk-tag-obs').prop('checked', false);
-        updateCharCounterMel(document.getElementById('txtObsCorrecao'));
-    }
-
+    function cancelarEnvioMel() { document.getElementById('modalTipoEnvioMel').style.display = 'none'; document.getElementById('modalObsCorrecaoMel').style.display = 'none'; idsPendingMel = []; jQuery('#txtObsCorrecao').text(''); jQuery('.chk-tag-obs').prop('checked', false); updateCharCounterMel(document.getElementById('txtObsCorrecao')); }
     function enviarCorrecaoSingleMel(id) { idsPendingMel = [id]; document.getElementById('modalTipoEnvioMel').style.display = 'flex'; }
-    function enviarCorrecaoMassaMel() {
-        var ids = []; jQuery('.row-check:checked').each(function() { ids.push(jQuery(this).val()); });
-        if (ids.length === 0) { alert('Selecione pelo menos um item.'); return; }
-        idsPendingMel = ids; document.getElementById('modalTipoEnvioMel').style.display = 'flex';
-    }
-
-    function confirmarEnvioTipoMel(tipo) {
-        if (idsPendingMel.length > 0) {
-            if (tipo === 'corr') { fecharModalTipoMel(); document.getElementById('modalObsCorrecaoMel').style.display = 'flex'; }
-            else { enviarAjaxCorrecaoMel(idsPendingMel, tipo, '', ''); fecharModalTipoMel(); }
-        }
-    }
-
-    function updateCharCounterMel(el) {
-        var count = el.innerText.length;
-        var display = document.getElementById('charCounterMel');
-        display.innerText = count + ' / 500';
-        if (count > 500) { display.className = 'char-counter char-red'; } 
-        else { display.className = 'char-counter char-green'; }
-    }
-
-    function finalizarEnvioCorrecao() {
-        var el = document.getElementById('txtObsCorrecao');
-        var obs = el.innerText;
-        if (obs.length > 500) { alert('Limite de 500 caracteres excedido!'); return; }
-
-        var tags = []; jQuery('.chk-tag-obs:checked').each(function() { tags.push(jQuery(this).val()); });
-        var tagsStr = tags.join(',');
-        if (idsPendingMel.length > 0) { enviarAjaxCorrecaoMel(idsPendingMel, 'corr', obs, tagsStr); }
-        document.getElementById('modalObsCorrecaoMel').style.display = 'none';
-    }
-    
+    function enviarCorrecaoMassaMel() { var ids = []; jQuery('.row-check:checked').each(function() { ids.push(jQuery(this).val()); }); if (ids.length === 0) { alert('Selecione pelo menos um item.'); return; } idsPendingMel = ids; document.getElementById('modalTipoEnvioMel').style.display = 'flex'; }
+    function confirmarEnvioTipoMel(tipo) { if (idsPendingMel.length > 0) { if (tipo === 'corr') { fecharModalTipoMel(); document.getElementById('modalObsCorrecaoMel').style.display = 'flex'; } else { enviarAjaxCorrecaoMel(idsPendingMel, tipo, '', ''); fecharModalTipoMel(); } } }
+    function updateCharCounterMel(el) { var count = el.innerText.length; var display = document.getElementById('charCounterMel'); display.innerText = count + ' / 500'; if (count > 500) { display.className = 'char-counter char-red'; } else { display.className = 'char-counter char-green'; } }
+    function finalizarEnvioCorrecao() { var el = document.getElementById('txtObsCorrecao'); var obs = el.innerText; if (obs.length > 500) { alert('Limite de 500 caracteres excedido!'); return; } var tags = []; jQuery('.chk-tag-obs:checked').each(function() { tags.push(jQuery(this).val()); }); var tagsStr = tags.join(','); if (idsPendingMel.length > 0) { enviarAjaxCorrecaoMel(idsPendingMel, 'corr', obs, tagsStr); } document.getElementById('modalObsCorrecaoMel').style.display = 'none'; }
     function enviarAjaxCorrecaoMel(ids, tipo, obs, tags) {
-        var url = jQuery('#hardness_ajaxUrl_mel').val();
-        var sysIdVal = jQuery('#sys_base_divId_mel').val();
-        var sysRootVal = jQuery('#sys_base_divRoot_mel').val();
+        var url = jQuery('#hardness_ajaxUrl_mel').val(); var sysIdVal = jQuery('#sys_base_divId_mel').val(); var sysRootVal = jQuery('#sys_base_divRoot_mel').val();
         if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
-        jQuery.ajax({
-            url: url, type: 'POST', dataType: 'json',
-            data: { ajax: 1, action: 'send_correction_mel', ids: ids, tipo: tipo, obs: obs, tags: tags, sys_divRoot: sysRootVal, sys_divId: sysIdVal },
-            success: function(res) {
-                alert(res.msg || 'Processado.');
-                jQuery('.row-check').prop('checked', false);
-                idsPendingMel = [];
-                jQuery('#txtObsCorrecao').text('');
-                jQuery('.chk-tag-obs').prop('checked', false);
-                updateCharCounterMel(document.getElementById('txtObsCorrecao'));
-            },
-            complete: function() { if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); }
-        });
+        jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'send_correction_mel', ids: ids, tipo: tipo, obs: obs, tags: tags, sys_divRoot: sysRootVal, sys_divId: sysIdVal }, success: function(res) { alert(res.msg || 'Processado.'); jQuery('.row-check').prop('checked', false); idsPendingMel = []; jQuery('#txtObsCorrecao').text(''); jQuery('.chk-tag-obs').prop('checked', false); updateCharCounterMel(document.getElementById('txtObsCorrecao')); }, complete: function() { if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); } });
     }
 
     var allSelectedMel = false;
@@ -1039,16 +1047,96 @@ echo "<div id='demoMel'></div></div>";
     const mVisMel = document.getElementById('modalVisMel'), vThumbsMel = document.getElementById('visThumbsMel'), vHeroMel = document.getElementById('visHeroMel'), vTitleMel = document.getElementById('visTitleMel'), vSkuMel = document.getElementById('visSkuMel'), vBrandMel = document.getElementById('visBrandMel'), vDescMel = document.getElementById('visDescMel'), vSpecsMel = document.getElementById('visSpecsContentMel');
     const elTSMel = document.getElementById('visTitleScoreMel'), elDSMel = document.getElementById('visDescScoreMel'), elISMel = document.getElementById('visImgScoreMel'), elASMel = document.getElementById('visAttrScoreMel');
     function getMetaNotaMel(n) { n = Number(n); if (n === 6) return { c: '#0098D3', t: 'Ótima' }; if (n === 5) return { c: '#10b981', t: 'Muito Boa' }; if (n === 4) return { c: '#84cc16', t: 'Boa' }; if (n === 3) return { c: '#eab308', t: 'Média' }; if (n === 2) return { c: '#fca5a5', t: 'Ruim' }; return { c: '#ef4444', t: 'Muito Ruim' }; }
-    
     function abrirVisualizadorMel(sku) {
-        var url = document.getElementById('hardness_ajaxUrl_mel').value; 
-        var sysIdVal = document.getElementById('sys_base_divId_mel').value;
-        var sysRootVal = document.getElementById('sys_base_divRoot_mel').value;
+        var url = document.getElementById('hardness_ajaxUrl_mel').value; var sysIdVal = document.getElementById('sys_base_divId_mel').value; var sysRootVal = document.getElementById('sys_base_divRoot_mel').value;
         if (sysIdVal && typeof jQuery !== 'undefined' && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
-        // [CORREÇÃO] Adicionando contexto ao payload
         jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'get_details_mel', sku: sku, sys_divRoot: sysRootVal, sys_divId: sysIdVal }, success: function (res) { if (res.ok) { vTitleMel.innerText = res.titulo; vSkuMel.innerText = res.sku; vBrandMel.innerText = res.marca; vDescMel.innerHTML = res.desc ? res.desc : '<em>Sem descrição.</em>'; const mT = getMetaNotaMel(res.scores.tit); elTSMel.style.backgroundColor = mT.c; elTSMel.innerText = res.scores.tit + ' - ' + mT.t; const mD = getMetaNotaMel(res.scores.desc); elDSMel.style.backgroundColor = mD.c; elDSMel.innerText = res.scores.desc + ' - ' + mD.t; const mI = getMetaNotaMel(res.scores.img); elISMel.style.backgroundColor = mI.c; elISMel.innerText = 'Fotos: ' + res.scores.img + ' (' + mI.t + ')'; const mA = getMetaNotaMel(res.scores.attr); elASMel.style.backgroundColor = mA.c; elASMel.innerText = res.scores.attr + ' - ' + mA.t; vThumbsMel.innerHTML = ''; if (res.imgs.length > 0) vHeroMel.src = res.imgs[0]; res.imgs.forEach((url, idx) => { let img = document.createElement('img'); img.src = url; img.className = 'vis-mini'; if (idx === 0) img.classList.add('active'); img.onclick = () => { vHeroMel.src = url; document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active')); img.classList.add('active'); }; vThumbsMel.appendChild(img); }); let h = '<table class="vis-specs-table">'; let has = false; if (res.specs.EAN) { h += `<tr><td><strong>EAN:</strong> ${res.specs.EAN}</td></tr>`; has = true; } if (res.specs.Garantia) { h += `<tr><td><strong>Garantia:</strong> ${res.specs.Garantia}</td></tr>`; has = true; } if (res.specs.Peso) { h += `<tr><td><strong>Peso:</strong> ${res.specs.Peso}</td></tr>`; has = true; } if (res.specs.Altura) { h += `<tr><td><strong>Altura:</strong> ${res.specs.Altura}</td></tr>`; has = true; } if (res.specs.Largura) { h += `<tr><td><strong>Largura:</strong> ${res.specs.Largura}</td></tr>`; has = true; } if (res.specs.Comprimento) { h += `<tr><td><strong>Comp.:</strong> ${res.specs.Comprimento}</td></tr>`; has = true; } h += '</table>'; vSpecsMel.innerHTML = has ? h : '<div style="color:#999;font-size:12px">Vazio</div>'; mVisMel.style.display = 'flex'; } else { alert(res.msg || 'Erro ao carregar'); } }, error: function () { alert('Erro na comunicação'); }, complete: function () { if (sysIdVal && typeof jQuery !== 'undefined' && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); } });
     }
     function fecharVisMel() { mVisMel.style.display = 'none'; }
-    function imprimirConteudoModalMel() { const f = document.createElement('iframe'); f.style.display = 'none'; document.body.appendChild(f); const d = f.contentWindow.document; const s = vSpecsMel.innerHTML; const c = `<html><head><style>body{font-family:Arial,sans-serif;padding:20px;color:#333}h1{font-size:24px;margin-bottom:5px}.meta{color:#666;font-size:12px;margin-bottom:20px;border-bottom:1px solid #ccc;padding-bottom:10px}.hero{text-align:center;margin-bottom:20px}.hero img{max-width:300px;max-height:300px}.desc{font-size:12px;line-height:1.5;margin-bottom:20px; text-align:justify;}.specs-box{border:1px solid #eee;padding:10px;border-radius:5px}.specs-box table{width:100%;font-size:12px}.specs-box td{padding:4px 0}</style></head><body><h1>${vTitleMel.innerText}</h1><div class="meta">SKU: ${vSkuMel.innerText} | ${vBrandMel.innerText}</div><div class="hero"><img src="${vHeroMel.src}"></div><h3>Descrição</h3><div class="desc">${vDescMel.innerHTML}</div><h3>Specs</h3><div class="specs-box">${s}</div></body></html>`; d.open(); d.write(c); d.close(); setTimeout(() => { f.contentWindow.print(); setTimeout(() => document.body.removeChild(f), 1000); }, 200); }
     document.addEventListener('keydown', e => { if (e.key === "Escape") fecharVisMel() });
+
+    // [NOVO] FUNÇÕES SYNC 
+    function openSyncModalMel() { document.getElementById('modalConfirmSyncMel').style.display = 'flex'; }
+    function fecharSyncModalMel() { document.getElementById('modalConfirmSyncMel').style.display = 'none'; }
+    function fecharResSyncMel() { document.getElementById('modalResSyncMel').style.display = 'none'; applyFiltersMel(); }
+
+    function executarSyncFullMel() {
+        fecharSyncModalMel();
+        var url = jQuery('#hardness_ajaxUrl_mel').val(); var sysIdVal = jQuery('#sys_base_divId_mel').val(); var sysRootVal = jQuery('#sys_base_divRoot_mel').val();
+        if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
+
+        jQuery.ajax({
+            url: url, type: 'POST', dataType: 'json',
+            data: { ajax: 1, action: 'sync_auto_full_mel', sys_divRoot: sysRootVal, sys_divId: sysIdVal },
+            success: function(res) {
+                if (res.ok) {
+                    jQuery('#cntFlags').text(res.summary.flags);
+                    jQuery('#cntNovos').text(res.summary.novos);
+                    var html = '';
+                    if (res.details && res.details.length > 0) {
+                        res.details.forEach(function(item) {
+                            var badge = item.status === 'Sucesso' ? '<span class="st-badge st-ok">OK</span>' : '<span class="st-badge st-err">Erro</span>';
+                            html += '<tr><td>'+item.sku+'</td><td>'+item.idAny+'</td><td>'+badge+' '+item.msg+'</td></tr>';
+                        });
+                    } else {
+                        html = '<tr><td colspan="3" style="text-align:center;">Nenhum produto pendente de sincronização.</td></tr>';
+                    }
+                    jQuery('#tblSyncDetails').html(html);
+                    document.getElementById('modalResSyncMel').style.display = 'flex';
+                } else {
+                    alert('Erro: ' + (res.msg || 'Desconhecido'));
+                }
+            },
+            error: function(xhr, status, error) { alert('Erro de comunicação.'); },
+            complete: function() { if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); }
+        });
+    }
+
+    // [NOVO] --- SINCRONIZAÇÃO ANYMARKET PARA MELHORIA ---
+    function syncAnyMarketItemMel(id) {
+        if(!confirm('Deseja buscar os dados mais recentes deste item na AnyMarket?')) return;
+        
+        var url = jQuery('#hardness_ajaxUrl_mel').val();
+        var sysId = jQuery('#sys_base_divId_mel').val();
+        var sysRoot = jQuery('#sys_base_divRoot_mel').val();
+    
+        if (sysId) jQuery('#' + sysId).showLoading();
+    
+        jQuery.ajax({
+            url: url, type: 'POST', dataType: 'json',
+            data: { ajax: 1, action: 'sync_anymarket_item_mel', id: id, sys_divRoot: sysRoot, sys_divId: sysId },
+            success: function(res) {
+                if (res.ok) { alert(res.msg); appMel.loadData(1); } 
+                else { alert('Erro: ' + res.msg); }
+            },
+            error: function() { alert('Erro de comunicação.'); },
+            complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); }
+        });
+    }
+
+    function syncAnyMarketMassaMel() {
+        var checked = jQuery('.row-check:checked');
+        if (checked.length === 0) { alert('Selecione pelo menos um item.'); return; }
+        if (!confirm('Deseja sincronizar os ' + checked.length + ' itens selecionados?')) return;
+    
+        var ids = [];
+        checked.each(function() { ids.push(jQuery(this).val()); });
+    
+        var url = jQuery('#hardness_ajaxUrl_mel').val();
+        var sysId = jQuery('#sys_base_divId_mel').val();
+        var sysRoot = jQuery('#sys_base_divRoot_mel').val();
+    
+        if (sysId) jQuery('#' + sysId).showLoading();
+    
+        jQuery.ajax({
+            url: url, type: 'POST', dataType: 'json',
+            data: { ajax: 1, action: 'sync_anymarket_massa_mel', ids: ids, sys_divRoot: sysRoot, sys_divId: sysId },
+            success: function(res) {
+                if (res.ok) { alert(res.msg); appMel.loadData(1); } 
+                else { alert('Erro: ' + res.msg); }
+            },
+            error: function() { alert('Erro de comunicação.'); },
+            complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); }
+        });
+    }
 </script>
