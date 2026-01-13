@@ -13,7 +13,7 @@ global $g, $confUsuario;
 error_reporting(E_ALL & ~E_NOTICE);
 ini_set('display_errors', 1);
 
-$qtdePorPagina = 150;
+$qtdePorPagina = 40;
 $limit         = $qtdePorPagina;
 
 // --- [CORREÇÃO DE CONTEXTO - DIV ROOT E ID] ---
@@ -715,7 +715,7 @@ $style = <<<STYLE
     .m-val { color: #374151; }
     .m-val.text-blue { color: var(--primary); }
     .col-box-scroll { font-size: 11px; color: #4b5563; max-height: 70px; overflow-y: auto; background: #fff; padding: 4px 6px; line-height: 1.5; border-radius: 6px; border: 1px solid #f3f4f6; text-align: left; }
-    .content-spec { max-height: none !important; height: auto !important; overflow: visible !important; display: flex; flex-direction: column; justify-content: center; }
+    .content-spec { max-height: none !important; height: auto !important; overflow: visible !important; display: flex; flex-direction: column; justify-content: center; min-height: 150px}
     .content-spec span { display: block; border-bottom: 1px solid #f9fafb; padding: 2px 0; }
     .content-desc { min-height: 150px; overflow-y: auto; }
     .col-box-scroll::-webkit-scrollbar { width: 4px; } .col-box-scroll::-webkit-scrollbar-track { background: #f1f1f1; } .col-box-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
