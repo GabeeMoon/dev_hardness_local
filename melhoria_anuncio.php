@@ -1,7 +1,8 @@
 <?php
 /*
  PAINEL DE MELHORIA DE ANUNCIO (D001E) - QUALITY SCORE 2.0
- ATUALIZADO: REGRAS NOVAS, CORES NOVAS, CÁLCULO SEM VÍDEO/IMG ESPECIAL
+ ATUALIZADO: REGRAS NOVAS, CORES NOVAS, CORREÇÃO ID_ANY (PAI)
+ CSS AJUSTADO: ESPAÇAMENTO E BOTÕES
  */
 namespace hardness;
 
@@ -270,6 +271,7 @@ function renderQualityRowMel($row) {
     // JS para abrir form legado
     $jsForn = "abrirJanela(false, '{$gDivRoot}', '{$gDivId}', unique(), '', 'Anuncio', '/cad/cad002/content/form2/', '&acaoId=' + encodeURIComponent('{$d001Id}'), [700,400]); return false;";
 
+    // **AJUSTE AQUI: Removemos o style inline errado e usamos classes**
     return "
     <div class='quality-row-mel'>
         <div class='col-check'><input type='checkbox' class='row-check' value='$idProd'></div>
@@ -316,9 +318,9 @@ function renderQualityRowMel($row) {
             <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipGeralMel($resT, $resD, $resI, $resA) . "</div>
         </div>
         
-        <div class='col-actions' style='block: flex; justify-content: center; gap: 6px;align-items: center; padding-left: 10px;'>
-             <button class='f-btn-send-single' onclick='enviarCorrecaoSingleMel(\"$idProd\")' title='Enviar para Melhoria'><i class='material-icons' style='font-size:18px'>build</i></button>
-             <button class='f-btn-sync_i' onclick='syncAnyMarketItemMel(\"$idProd\")' title='Atualizar com AnyMarket'><i class='material-icons' style='font-size:18px'>sync</i></button>
+        <div class='col-actions'>
+             <button class='f-btn-send-single' onclick='enviarCorrecaoSingleMel(\"$idProd\")' title='Enviar para Melhoria'><i class='material-icons'>build</i></button>
+             <button class='f-btn-sync_i' onclick='syncAnyMarketItemMel(\"$idProd\")' title='Atualizar com AnyMarket'><i class='material-icons'>sync</i></button>
         </div>
     </div>";
 }
@@ -353,7 +355,7 @@ if ($isAjax) {
         }
     }
 
-    // --- SYNC INDIVIDUAL E EM MASSA ---
+    // --- SYNC INDIVIDUAL E EM MASSA (ATUALIZADO ID PAI) ---
     if (isset($_POST['action']) && ($_POST['action'] === 'sync_anymarket_item_mel' || $_POST['action'] === 'sync_anymarket_massa_mel')) {
         $ids = isset($_POST['ids']) ? $_POST['ids'] : [$_POST['id']];
         if (!is_array($ids)) $ids = explode(',', $ids);
@@ -388,14 +390,18 @@ if ($isAjax) {
                     if (!empty($body['content'][0])) {
                         $d = $body['content'][0];
                         $tituloProd = isset($d['title']) ? $d['title'] : '';
-                        $tituloSku = ''; $eanSku = ''; $idAnySku = isset($d['id']) ? $d['id'] : 0;
+                        
+                        // CORREÇÃO: ID do PAI (raiz)
+                        $idAnySku = isset($d['id']) ? $d['id'] : 0;
+                        
+                        $tituloSku = ''; $eanSku = '';
                         
                         if (isset($d['skus']) && is_array($d['skus'])) {
                             foreach ($d['skus'] as $s) {
                                 if (isset($s['partnerId']) && strval($s['partnerId']) === strval($skuSync)) {
                                     $tituloSku = isset($s['title']) ? $s['title'] : '';
                                     $eanSku    = isset($s['ean']) ? $s['ean'] : '';
-                                    if(isset($s['id'])) $idAnySku = $s['id'];
+                                    // Removido sobrescrita do ID aqui
                                     break;
                                 }
                             }
@@ -436,7 +442,7 @@ if ($isAjax) {
         exit;
     }
 
-    // --- SYNC AUTOMÁTICO COMPLETO (VIA MYSQLI PARA EVITAR ERROS DE LEGADO) ---
+    // --- SYNC AUTOMÁTICO COMPLETO (VIA MYSQLI) - ATUALIZADO ID PAI ---
     if (isset($_POST['action']) && $_POST['action'] === 'sync_auto_full_mel') {
         header('Content-Type: application/json; charset=UTF-8');
         set_time_limit(180); 
@@ -486,7 +492,9 @@ if ($isAjax) {
                         $body = isset($resp['body']) ? (is_array($resp['body']) ? $resp['body'] : json_decode($resp['body'], true)) : [];
                         if (!empty($body['content'][0])) {
                             $d = $body['content'][0];
+                            // CORREÇÃO: ID do PAI
                             if (isset($d['id'])) $idAnySku = (int) $d['id'];
+                            
                             $titulo = isset($d['title']) ? $d['title'] : '';
                             $descricao = isset($d['description']) ? $d['description'] : '';
                             $marca = !empty($d['brand']['name']) ? $d['brand']['name'] : '';
@@ -544,7 +552,9 @@ if ($isAjax) {
     if (isset($_POST['action']) && $_POST['action'] === 'export_csv_mel') {
         $where = ["T1.D001E_Flag_Ecommerce = 'S'"];
         if (!empty($_POST['f_tit'])) { $w = getSmartWhereMel("T1.D001E_Sku_Titulo", $_POST['f_tit'], 'text'); if($w) $where[] = $w; }
-        // ... (Mesmos filtros do grid) ...
+        // ... Recriando filtros para CSV ...
+        if (isset($_POST['f_sco']) && $_POST['f_sco'] !== '') { $w = getSmartWhereMel("T1.D001E_Status_Pontuacao", $_POST['f_sco'], 'number'); if($w) $where[] = $w; }
+        
         $whereStr = implode(" AND ", $where);
         $sqlCsv = "SELECT T1.* FROM D001E AS T1 LEFT JOIN D049 ON D049.D049_D001_Id = T1.D001E_D001_Id LEFT JOIN D009 AS T2 ON (T2.D009_D049_Id = D049.D049_Id AND T2.D009_C004_Id = $C004_Id) WHERE $whereStr GROUP BY T1.D001E_Id ORDER BY T1.D001E_Id ASC";
         $rsCsv = mysql_query($sqlCsv);
@@ -615,9 +625,9 @@ $style = <<<STYLE
         --border-color: #e5e7eb; 
         --score-6: #0098D3; 
         --score-5: #10b981; 
-        --score-4: #84cc16; /* Verde Claro */
+        --score-4: #84cc16; 
         --score-3: #eab308; 
-        --score-2: #fca5a5; /* Vermelho Claro */
+        --score-2: #fca5a5; 
         --score-1: #ef4444; 
         --primary: #0098D3; 
     }
@@ -637,66 +647,116 @@ $style = <<<STYLE
     .f-input { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 12px; outline: none; transition: all 0.2s; width: 100%; }
     .f-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(0, 152, 211, 0.15); }
     .f-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f3f4f6; gap: 10px; }
-    .f-btn-apply { background: var(--primary); color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
-    .f-btn-apply:hover { background: #acc2ff; }
-    .f-btn-clear { background: #ef4444; color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
-    .f-btn-clear:hover { background: #ff8282; }
-    .f-btn-export { background: #10b981; color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
-    .f-btn-export:hover { background: #10b981; }
-    .f-btn-send { background: #f59e0b; color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
-    .f-btn-send:hover { background: #8bc92c; }
-    .f-btn-sync { background: #6366f1; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
-    .f-btn-sync:hover { background: #818cf8; }
-    .f-btn-sync_i { background: #6366f1; color: #fff; border: none; padding: 6px 12px !important; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; margin-top: 10px;}
-    .f-btn-sync_i:hover { background: #818cf8; }
-    .f-btn-send-single { background: #f59e0b; color: #fff; border: none; padding: 6px 12px !important; border-radius: 8px; cursor: pointer; transition: 0.2s; }
-    .f-btn-send-single:hover { background: #d97706; }
-    .quality-header-mel, .quality-row-mel { display: grid; grid-template-columns: 30px 70px 1.4fr 1fr 1.2fr 0.8fr 40px 40px 40px 40px 70px 60px; gap: 8px; align-items: center; }
+    
+    /* Botões Padrão do Topo */
+    .f-btn-apply, .f-btn-clear, .f-btn-export, .f-btn-send, .f-btn-sync { color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; display:flex; align-items:center; gap:6px; transition: background 0.2s; }
+    .f-btn-apply { background: var(--primary); } .f-btn-apply:hover { background: #007bb5; }
+    .f-btn-clear { background: #ef4444; } .f-btn-clear:hover { background: #dc2626; }
+    .f-btn-export { background: #10b981; } .f-btn-export:hover { background: #059669; }
+    .f-btn-send { background: #f59e0b; } .f-btn-send:hover { background: #d97706; }
+    .f-btn-sync { background: #6366f1; } .f-btn-sync:hover { background: #4f46e5; }
+
+    /* --- AJUSTES DO GRID DA TABELA --- */
+    /* Aumentado ultima coluna para 100px para caber botoes e ajustado 3ª coluna */
+    .quality-header-mel, .quality-row-mel { 
+        display: grid; 
+        grid-template-columns: 30px 70px minmax(200px, 1.4fr) 1fr 1.2fr 0.8fr 45px 45px 45px 45px 70px 100px; 
+        gap: 12px; 
+        align-items: center; 
+    }
+    
     .quality-header-mel { position: sticky; top: 0; z-index: 50; background: #f9fafb; border-bottom: 2px solid #e5e7eb; padding: 12px 16px; font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.03em; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     .quality-header-mel > div { display: flex; align-items: center; justify-content: center; text-align: center; }
+    /* Alinhamento a esquerda para colunas de texto */
     .quality-header-mel > div:nth-child(3), .quality-header-mel > div:nth-child(5), .quality-header-mel > div:nth-child(6) { justify-content: flex-start; text-align: left; }
-    .quality-row-mel { background: var(--card-bg); border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 14px 16px; margin-bottom: 10px; border: 1px solid transparent; transition: all 0.2s; }
+    
+    .quality-row-mel { background: var(--card-bg); border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 14px 16px; margin-bottom: 10px; border: 1px solid #f1f1f1; transition: all 0.2s; }
     .quality-row-mel:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-color: #d1d5db; }
+    
     .thumb-box { width: 64px; height: 64px; border-radius: 8px; border: 1px solid #e5e7eb; padding: 3px; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .thumb-box img { width: 100%; height: 100%; object-fit: contain; }
+    
     .col-info { display: flex; flex-direction: column; gap: 4px; overflow: visible !important; justify-content: center; }
     .prod-title { font-size: 13px; font-weight: 600; color: #111827; line-height: 1.3; }
-    .prod-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .prod-sku { font-size: 10px; color: #4b5563; background: #f3f4f6; padding: 2px 6px; border-radius: 8px; font-family: monospace; border: 1px solid #e5e7eb; }
-    .prod-brand { font-size: 10px; font-weight: 700; color: var(--primary); white-space: nowrap; }
-    .badge-any { font-size: 10px; color: #fff; background: #FF600F; padding: 2px 6px; border-radius: 8px; font-family: monospace; border: 1px solid #e65100; font-weight: 700; }
-    .badge-sku { font-size: 10px; color: #fff; background: #089BD4; padding: 2px 6px; border-radius: 8px; font-family: monospace; border: 1px solid #0284c7; font-weight: 700; }
-    .badge-brand { font-size: 10px; color: #374151; background: #f3f4f6; padding: 2px 6px; border-radius: 8px; border: 1px solid #d1d5db; font-weight: 700; }
-    .col-metrics { display: block; grid-template-columns: 1fr 1fr; gap: 4px 10px; background: #f9fafb; padding: 6px 10px; border-radius: 8px; border: 1px solid #f3f4f6; min-height: 140px; place-self: anchor-center; align-content: center; }
-    .metric-cell { display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding-top: 10px; padding-bottom: 10px;}
-    .metric-cell .lbl { color: #9ca3af; font-size: 11px; font-weight: 600; text-transform: uppercase; margin-right: 50px; }
-    .metric-cell .val { color: #374151; }
-    .col-box-scroll { font-size: 11px; color: #4b5563; background: #fff; padding: 4px; line-height: 1.4; border-radius: 8px; border: 1px solid #f3f4f6; box-shadow: inherit; text-align: left; }
-    .desc-scroll-mel { max-height: 80px; overflow-y: auto; min-height: 140px;}
-    .spec-auto-mel { height: auto; overflow: visible; display: flex; flex-direction: column; min-height: 140px;}
+    .prod-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+    
+    /* Badges */
+    .badge-any, .badge-sku, .badge-brand { font-size: 10px; padding: 2px 6px; border-radius: 6px; font-family: monospace; font-weight: 700; display: inline-block; }
+    .badge-any { color: #fff; background: #FF600F; border: 1px solid #e65100; }
+    .badge-sku { color: #fff; background: #089BD4; border: 1px solid #0284c7; }
+    .badge-brand { color: #374151; background: #f3f4f6; border: 1px solid #d1d5db; }
+    
+    /* Métricas */
+    .col-metrics { display: block; background: #f9fafb; padding: 8px 12px; border-radius: 8px; border: 1px solid #f3f4f6; min-height: 120px; align-content: center; }
+    .metric-cell { display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 4px 0; border-bottom: 1px dashed #e5e7eb; }
+    .metric-cell:last-child { border-bottom: none; }
+    .metric-cell .lbl { color: #9ca3af; font-weight: 600; text-transform: uppercase; }
+    .metric-cell .val { color: #374151; font-weight: 600; }
+    
+    /* Textos Scroll */
+    .col-box-scroll { font-size: 11px; color: #4b5563; background: #fff; padding: 8px; line-height: 1.4; border-radius: 8px; border: 1px solid #f3f4f6; text-align: left; }
+    .desc-scroll-mel { max-height: 120px; overflow-y: auto; min-height: 120px; }
+    .spec-auto-mel { height: auto; overflow: visible; display: flex; flex-direction: column; min-height: 120px; }
     .spec-auto-mel span { display: block; border-bottom: 1px solid #f9fafb; padding: 2px 0; }
-    .col-box-scroll::-webkit-scrollbar { width: 3px; }
-    .col-box-scroll::-webkit-scrollbar-thumb { background: #d1d5db; }
+    /* Esconder scrollbar nativa mas manter funcionalidade */
+    .col-box-scroll::-webkit-scrollbar { width: 4px; }
+    .col-box-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+
+    /* Scores */
     .mini-score-box { display: flex; flex-direction: column; align-items: center; cursor: help; }
-    .mini-score-val { width: 28px; height: 28px; border-radius: 8px; background: #e5e7eb; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
+    .mini-score-val { width: 32px; height: 32px; border-radius: 8px; background: #e5e7eb; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
     .col-score { display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    .score-circle { position: relative; width: 44px; height: 44px; border-radius: 50%; background: conic-gradient(var(--color) calc(var(--percent) * 1%), #e5e7eb 0); display: flex; align-items: center; justify-content: center; margin-bottom: 2px; }
-    .score-circle::before { content: ""; position: absolute; width: 34px; height: 34px; border-radius: 50%; background: #ffffff; }
-    .score-number { position: relative; font-size: 14px; font-weight: 800; z-index: 1; color: #111827; }
-    .score-label { font-size: 9px; font-weight: 700; color: #6b7280; text-transform: uppercase; }
+    .score-circle { position: relative; width: 48px; height: 48px; border-radius: 50%; background: conic-gradient(var(--color) calc(var(--percent) * 1%), #e5e7eb 0); display: flex; align-items: center; justify-content: center; margin-bottom: 2px; }
+    .score-circle::before { content: ""; position: absolute; width: 38px; height: 38px; border-radius: 50%; background: #ffffff; }
+    .score-number { position: relative; font-size: 16px; font-weight: 800; z-index: 1; color: #111827; }
+    .score-label { font-size: 9px; font-weight: 700; color: #6b7280; text-transform: uppercase; margin-top: 2px; }
+
+    /* --- NOVOS ESTILOS PARA BOTÕES DE AÇÃO --- */
+    .col-actions { 
+        display: flex; 
+        justify-content: center; 
+        gap: 8px; 
+        align-items: center; 
+        height: 100%;
+    }
+    
+    .f-btn-send-single, .f-btn-sync_i { 
+        width: 34px; 
+        height: 34px; 
+        border: none; 
+        border-radius: 6px; 
+        cursor: pointer; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        transition: all 0.2s ease; 
+        color: #fff;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    
+    .f-btn-send-single { background: #f59e0b; } 
+    .f-btn-send-single:hover { background: #d97706; transform: scale(1.05); }
+    
+    .f-btn-sync_i { background: #6366f1; padding: 0 !important; margin: 0 !important; } 
+    .f-btn-sync_i:hover { background: #4f46e5; transform: scale(1.05); }
+    
+    .f-btn-send-single i, .f-btn-sync_i i { font-size: 18px; }
+
+    /* Tooltip */
     #hardness-custom-tooltip { background: #ffffff; border: 1px solid #e4e6eb; box-shadow: 0 8px 20px rgba(0,0,0,0.15); border-radius: 8px; padding: 0; z-index: 999999; font-size: 12px; color: #111827; min-width: 230px; }
     .tt-table { width: 100%; border-collapse: collapse; }
     .tt-head { background: #f3f4f6; padding: 8px 12px; font-weight: 700; font-size: 11px; text-transform: uppercase; text-align: left; color: #4b5563; }
     .tt-row { border-bottom: 1px solid #f3f4f6; padding: 6px 12px; color: #6b7280; font-size: 11px; }
     .tt-val { border-bottom: 1px solid #f3f4f6; padding: 6px 12px; color: #111827; text-align: right; font-weight: 700; font-size: 11px; }
     .tt-foot td { background: #f0f9ff; font-weight: 800; color: var(--primary); padding: 8px 12px; }
-    .header-tooltip-content { padding: 10px; }
-    .header-tooltip-title { font-weight: 700; color: var(--primary); border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; }
-    .header-rule-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px; color: #4b5563; }
+    
+    /* Modais */
     .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(3px); padding: 20px; }
     .modal-content { background: #fff; width: 100%; max-width: 1100px; height: 90%; border-radius: 8px; position: relative; display: flex; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
     .close-modal { position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; z-index: 100; color: #9ca3af; }
     .close-modal:hover { color: #333; }
+    
+    /* Visualizador Styles ... (mantidos simplificados) */
     .vis-thumbs { width: 100px; background: #f9fafb; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; border-right: 1px solid #e5e7eb; }
     .vis-mini { width: 100%; height: 70px; object-fit: contain; border: 2px solid transparent; border-radius: 8px; cursor: pointer; background: #fff; border: 1px solid #f1f1f1; }
     .vis-mini.active { border-color: var(--primary); }
@@ -707,33 +767,41 @@ $style = <<<STYLE
     .vis-h1 { font-size: 18px; font-weight: 700; margin: 0; color: #111827; line-height: 1.3; }
     .vis-chip { padding: 2px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; color: #fff; background: var(--primary); display: inline-block; vertical-align: middle; margin-left: 6px; }
     .vis-meta { font-size: 12px; color: #6b7280; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; }
-    .vis-btn-print { width: 100%; padding: 10px; background: #1f2937; color: #fff; border: none; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
     .vis-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-weight: 700; font-size: 12px; color: #111827; }
     .vis-desc-box { font-size: 12px; line-height: 1.5; color: #4b5563; background: #f9fafb; padding: 10px; border-radius: 8px; border: 1px solid #e5e7eb; max-height: 150px; overflow-y: auto; }
     .vis-specs-table td { padding: 4px 0; border-bottom: 1px solid #f3f4f6; color: #4b5563; font-size: 12px; }
+
+    /* Responsivo */
+    @media (max-width: 1400px) { 
+        .quality-header-mel, .quality-row-mel { grid-template-columns: 30px 60px 1.4fr 160px 1.5fr 1fr 45px 45px 45px 45px 70px 100px; gap: 8px; }
+    }
+    
+    /* Elementos Extras (Paginação, etc) */
     #demoMel { padding: 20px 0; display:none; flex-wrap:wrap; align-items:center; justify-content:center; gap:5px; }
     #demoMel.active { display: flex; }
-    #demoMel .pg-btn { border: 1px solid #d1d5db; background:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; color:#374151; }
+    #demoMel .pg-btn { border: 1px solid #d1d5db; background:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; color:#374151; text-decoration: none; }
     #demoMel .pg-btn.active { background: var(--primary); border-color: var(--primary); color:#fff; }
-    @media (max-width: 1200px) { 
-        .f-grid { grid-template-columns: repeat(4, 1fr); }
-        .quality-header-mel, .quality-row-mel { grid-template-columns: 30px 60px 1.4fr 160px 1.5fr 1fr 60px; gap: 8px; }
-        .col-metrics { grid-template-columns: 1fr; gap: 2px; }
-    }
+    
+    /* Botões de Seleção Modal */
     .btn-sel-type { border: 2px solid #e5e7eb; background: #fff; padding: 20px; border-radius: 8px; font-size: 14px; font-weight: 700; color: #374151; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 140px; height: 120px; }
     .btn-sel-type:hover { border-color: var(--primary); background: #f0f9ff; color: var(--primary); transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
     .btn-sel-type i { font-size: 32px; color: #9ca3af; transition: color 0.2s; }
     .btn-sel-type:hover i { color: var(--primary); }
+    
+    /* Obs Input */
     .obs-wrapper { width:100%; display:flex; flex-direction:column; gap:15px; position: relative; }
-    .obs-input { width:100%; min-height:150px; max-height: 150px; overflow-y: auto; border:1px solid #d1d5db; border-radius:8px; padding:1px; font-size:14px; color:#374151; outline:none; transition:0.2s; font-family:inherit; background:#fff; line-height:1.5; }
+    .obs-input { width:100%; min-height:150px; max-height: 150px; overflow-y: auto; border:1px solid #d1d5db; border-radius:8px; padding:10px; font-size:14px; color:#374151; outline:none; transition:0.2s; font-family:inherit; background:#fff; line-height:1.5; }
     .obs-input:focus { border-color:var(--primary); box-shadow:0 0 0 4px rgba(0,152,211,0.1); }
     .obs-input:empty:before { content: attr(data-placeholder); color: #9ca3af; font-style: italic; }
     .char-counter { position: absolute; bottom: 10px; right: 15px; font-size: 11px; font-weight: 800; background: rgba(255,255,255,0.9); padding: 2px 6px; border-radius: 8px; }
     .char-green { color: #10b981; } .char-red { color: #ef4444; }
+    
     .tag-grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
     .tag-check-item { display:flex; align-items:center; gap:8px; font-size:13px; color:#374151; cursor:pointer; padding:8px 10px; border:1px solid #e5e7eb; border-radius:6px; transition:0.1s; }
     .tag-check-item:hover { background:#f9fafb; border-color:#d1d5db; }
     .tag-check-item input { width:16px; height:16px; cursor:pointer; accent-color:var(--primary); }
+    
+    /* Resultado Sync */
     .res-dash-cards { display:flex; gap:15px; margin-bottom:20px; }
     .res-card { flex:1; background:#f9fafb; border:1px solid #e5e7eb; padding:15px; border-radius:8px; text-align:center; }
     .res-card-val { font-size:24px; font-weight:800; color:var(--primary); }
