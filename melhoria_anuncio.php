@@ -562,8 +562,10 @@ if ($isAjax) {
     }
 
     // --- EXPORT CSV (CORRIGIDO MYSQLI) ---
-    if (isset($_POST['action']) && $_POST['action'] === 'export_csv_mel') {
-        $where = ["T1.D001E_Flag_Ecommerce = 'S'"];
+// --- EXPORT CSV (CORRIGIDO MYSQLI) ---
+        if (isset($_POST['action']) && $_POST['action'] === 'export_csv_mel') {
+            // ALTERAÇÃO: Adicionado OR para Flag_Publicar entre parenteses
+            $where = ["(T1.D001E_Flag_Ecommerce = 'S' OR T1.D001E_Flag_Publicar = 'S')"];
         if (!empty($_POST['f_tit'])) { $w = getSmartWhereMel("T1.D001E_Sku_Titulo", $_POST['f_tit'], 'text'); if($w) $where[] = $w; }
         if (!empty($_POST['f_sco'])) { $w = getSmartWhereMel("T1.D001E_Status_Pontuacao", $_POST['f_sco'], 'number'); if($w) $where[] = $w; }
         
@@ -595,7 +597,8 @@ if ($isAjax) {
 
     // --- GRID PRINCIPAL (CORRIGIDO MYSQLI) ---
     header('Content-Type: application/json; charset=UTF-8');
-    $where = ["T1.D001E_Flag_Ecommerce = 'S'"];
+    // ALTERAÇÃO: Adicionado OR para Flag_Publicar entre parenteses
+    $where = ["(T1.D001E_Flag_Ecommerce = 'S' OR T1.D001E_Flag_Publicar = 'S')"];
     if (!empty($_POST['f_tit'])) { $w = getSmartWhereMel("T1.D001E_Sku_Titulo", $_POST['f_tit'], 'text'); if($w) $where[] = $w; }
     if (!empty($_POST['f_id_any'])) { $w = getSmartWhereMel("T1.D001E_Id_Any", $_POST['f_id_any'], 'number'); if($w) $where[] = $w; }
     if (!empty($_POST['f_sku'])) { $w = getSmartWhereMel("T1.D001E_D001_Codigo_Produto", $_POST['f_sku'], 'text'); if($w) $where[] = $w; }
@@ -816,7 +819,7 @@ $style = <<<STYLE
     .header-rule-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px; color: #4b5563; }
     
     /* CONSOLE DE PROGRESSO */
-    .console-box { width: 100%; background: #1e1e1e; border-radius: 6px; padding: 15px; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; color: #d4d4d4; height: 300px; overflow-y: auto; border: 1px solid #333; margin-top: 15px; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+    .console-box { width: auto; background: #1e1e1e; border-radius: 6px; padding: 15px; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; color: #d4d4d4; height: 300px; overflow-y: auto; border: 1px solid #333; margin-top: 15px; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
     .console-line { margin-bottom: 4px; display: block; border-bottom: 1px solid #333; padding-bottom: 2px; }
     .console-time { color: #569cd6; margin-right: 8px; }
     .console-info { color: #d4d4d4; }
@@ -1004,7 +1007,68 @@ echo "<div id='demoMel'></div></div>";
     </div>
 </div>
 
+<div id="modalAlertMel" class="modal-overlay" style="z-index: 10000;">
+    <div class="modal-content" style="max-width: 400px; height: auto; flex-direction: column; align-items: center; padding: 25px; gap: 15px; border-radius: 12px;">
+        <div style="text-align:center;">
+            <div style="width:50px; height:50px; background:#e0f2fe; color:#0284c7; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 15px auto;">
+                <i class="material-icons" style="font-size:28px">info</i>
+            </div>
+            <h2 style="font-size:18px; color:#111827; margin:0 0 8px 0;" id="alertTitleMel">Atenção</h2>
+            <p style="font-size:14px; color:#6b7280; margin:0; line-height:1.5;" id="alertMsgMel">Mensagem aqui...</p>
+        </div>
+        <button class="f-btn-send_env" style="width:100% !important; justify-content:center;" onclick="document.getElementById('modalAlertMel').style.display='none'">
+            Entendido
+        </button>
+    </div>
+</div>
+
+<div id="modalConfirmGenericMel" class="modal-overlay" style="z-index: 10000;">
+    <div class="modal-content" style="max-width: 450px; height: auto; flex-direction: column; align-items: center; padding: 25px; gap: 20px; border-radius: 12px;">
+        <div style="text-align:center;">
+            <div style="width:50px; height:50px; background:#fff7ed; color:#ea580c; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 15px auto;">
+                <i class="material-icons" style="font-size:28px">help</i>
+            </div>
+            <h2 style="font-size:18px; color:#111827; margin:0 0 8px 0;" id="confirmTitleMel">Confirmação</h2>
+            <p style="font-size:14px; color:#6b7280; margin:0; line-height:1.5;" id="confirmMsgMel">Tem certeza?</p>
+        </div>
+        <div style="display:flex; gap: 12px; width: 100%; justify-content: center;">
+            <button class="f-btn-export_can" style="flex:1; justify-content:center;" onclick="document.getElementById('modalConfirmGenericMel').style.display='none'">
+                Cancelar
+            </button>
+            <button class="f-btn-send_env" id="btnConfirmActionMel" style="flex:1; justify-content:center;">
+                Sim, Confirmar
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
+
+    // --- [NOVAS] FUNÇÕES AUXILIARES DE MODAL ---
+    function customAlertMel(titulo, msg) {
+        document.getElementById('alertTitleMel').innerText = titulo || 'Atenção';
+        document.getElementById('alertMsgMel').innerHTML = msg; // Permite HTML simples
+        document.getElementById('modalAlertMel').style.display = 'flex';
+    }
+
+    function customConfirmMel(titulo, msg, callbackAction) {
+        document.getElementById('confirmTitleMel').innerText = titulo || 'Confirmação';
+        document.getElementById('confirmMsgMel').innerText = msg;
+        
+        // Define o que o botão "Sim" faz
+        var btn = document.getElementById('btnConfirmActionMel');
+        // Remove listeners antigos para evitar duplicação (clone hack)
+        var newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        
+        newBtn.onclick = function() {
+            document.getElementById('modalConfirmGenericMel').style.display = 'none';
+            if (callbackAction) callbackAction();
+        };
+
+        document.getElementById('modalConfirmGenericMel').style.display = 'flex';
+    }
+
     function toggleFilterBodyMel() {
         var b = document.getElementById('filterBodyMel');
         var c = document.getElementById('filterChevronMel');
@@ -1122,14 +1186,65 @@ echo "<div id='demoMel'></div></div>";
     function fecharModalTipoMel() { document.getElementById('modalTipoEnvioMel').style.display = 'none'; }
     function cancelarEnvioMel() { document.getElementById('modalTipoEnvioMel').style.display = 'none'; document.getElementById('modalObsCorrecaoMel').style.display = 'none'; idsPendingMel = []; jQuery('#txtObsCorrecao').text(''); jQuery('.chk-tag-obs').prop('checked', false); updateCharCounterMel(document.getElementById('txtObsCorrecao')); }
     function enviarCorrecaoSingleMel(id) { idsPendingMel = [id]; document.getElementById('modalTipoEnvioMel').style.display = 'flex'; }
-    function enviarCorrecaoMassaMel() { var ids = []; jQuery('.row-check:checked').each(function() { ids.push(jQuery(this).val()); }); if (ids.length === 0) { alert('Selecione pelo menos um item.'); return; } idsPendingMel = ids; document.getElementById('modalTipoEnvioMel').style.display = 'flex'; }
+    // 1. Envio em Massa para Correção
+    function enviarCorrecaoMassaMel() { 
+        var ids = []; 
+        jQuery('.row-check:checked').each(function() { ids.push(jQuery(this).val()); }); 
+        
+        if (ids.length === 0) { 
+            customAlertMel('Seleção Vazia', 'Selecione pelo menos um item na lista para enviar.'); 
+            return; 
+        } 
+        
+        idsPendingMel = ids; 
+        document.getElementById('modalTipoEnvioMel').style.display = 'flex'; 
+    }
     function confirmarEnvioTipoMel(tipo) { if (idsPendingMel.length > 0) { if (tipo === 'corr') { fecharModalTipoMel(); document.getElementById('modalObsCorrecaoMel').style.display = 'flex'; } else { enviarAjaxCorrecaoMel(idsPendingMel, tipo, '', ''); fecharModalTipoMel(); } } }
     function updateCharCounterMel(el) { var count = el.innerText.length; var display = document.getElementById('charCounterMel'); display.innerText = count + ' / 500'; if (count > 500) { display.className = 'char-counter char-red'; } else { display.className = 'char-counter char-green'; } }
-    function finalizarEnvioCorrecao() { var el = document.getElementById('txtObsCorrecao'); var obs = el.innerText; if (obs.length > 500) { alert('Limite de 500 caracteres excedido!'); return; } var tags = []; jQuery('.chk-tag-obs:checked').each(function() { tags.push(jQuery(this).val()); }); var tagsStr = tags.join(','); if (idsPendingMel.length > 0) { enviarAjaxCorrecaoMel(idsPendingMel, 'corr', obs, tagsStr); } document.getElementById('modalObsCorrecaoMel').style.display = 'none'; }
-    function enviarAjaxCorrecaoMel(ids, tipo, obs, tags) {
-        var url = jQuery('#hardness_ajaxUrl_mel').val(); var sysIdVal = jQuery('#sys_base_divId_mel').val(); var sysRootVal = jQuery('#sys_base_divRoot_mel').val();
+    
+    function finalizarEnvioCorrecao() { 
+        var el = document.getElementById('txtObsCorrecao'); 
+        var obs = el.innerText; 
+        
+        if (obs.length > 500) { 
+            customAlertMel('Limite Excedido', 'O texto de observação não pode passar de 500 caracteres.'); 
+            return; 
+        } 
+        
+        var tags = []; 
+        jQuery('.chk-tag-obs:checked').each(function() { tags.push(jQuery(this).val()); }); 
+        var tagsStr = tags.join(','); 
+        
+        if (idsPendingMel.length > 0) { 
+            enviarAjaxCorrecaoMel(idsPendingMel, 'corr', obs, tagsStr); 
+        } 
+        document.getElementById('modalObsCorrecaoMel').style.display = 'none'; 
+    }
+
+function enviarAjaxCorrecaoMel(ids, tipo, obs, tags) {
+        var url = jQuery('#hardness_ajaxUrl_mel').val(); 
+        var sysIdVal = jQuery('#sys_base_divId_mel').val(); 
+        var sysRootVal = jQuery('#sys_base_divRoot_mel').val();
+        
         if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
-        jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'send_correction_mel', ids: ids, tipo: tipo, obs: obs, tags: tags, sys_divRoot: sysRootVal, sys_divId: sysIdVal }, success: function(res) { alert(res.msg || 'Processado.'); jQuery('.row-check').prop('checked', false); idsPendingMel = []; jQuery('#txtObsCorrecao').text(''); jQuery('.chk-tag-obs').prop('checked', false); updateCharCounterMel(document.getElementById('txtObsCorrecao')); }, complete: function() { if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); } });
+        
+        jQuery.ajax({ 
+            url: url, type: 'POST', dataType: 'json', 
+            data: { ajax: 1, action: 'send_correction_mel', ids: ids, tipo: tipo, obs: obs, tags: tags, sys_divRoot: sysRootVal, sys_divId: sysIdVal }, 
+            success: function(res) { 
+                // AQUI MUDOU: Usa o modal customizado
+                customAlertMel('Sucesso', res.msg || 'Processado com sucesso.'); 
+                
+                jQuery('.row-check').prop('checked', false); 
+                idsPendingMel = []; 
+                jQuery('#txtObsCorrecao').text(''); 
+                jQuery('.chk-tag-obs').prop('checked', false); 
+                updateCharCounterMel(document.getElementById('txtObsCorrecao')); 
+            }, 
+            complete: function() { 
+                if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); 
+            } 
+        });
     }
 
     var allSelectedMel = false;
@@ -1138,10 +1253,109 @@ echo "<div id='demoMel'></div></div>";
     const mVisMel = document.getElementById('modalVisMel'), vThumbsMel = document.getElementById('visThumbsMel'), vHeroMel = document.getElementById('visHeroMel'), vTitleMel = document.getElementById('visTitleMel'), vSkuMel = document.getElementById('visSkuMel'), vBrandMel = document.getElementById('visBrandMel'), vDescMel = document.getElementById('visDescMel'), vSpecsMel = document.getElementById('visSpecsContentMel');
     const elTSMel = document.getElementById('visTitleScoreMel'), elDSMel = document.getElementById('visDescScoreMel'), elISMel = document.getElementById('visImgScoreMel'), elASMel = document.getElementById('visAttrScoreMel');
     function getMetaNotaMel(n) { n = Number(n); if (n === 6) return { c: '#0098D3', t: 'Ótima' }; if (n === 5) return { c: '#10b981', t: 'Muito Boa' }; if (n === 4) return { c: '#84cc16', t: 'Boa' }; if (n === 3) return { c: '#eab308', t: 'Média' }; if (n === 2) return { c: '#fca5a5', t: 'Ruim' }; return { c: '#ef4444', t: 'Muito Ruim' }; }
-    function abrirVisualizadorMel(sku) {
-        var url = document.getElementById('hardness_ajaxUrl_mel').value; var sysIdVal = document.getElementById('sys_base_divId_mel').value; var sysRootVal = document.getElementById('sys_base_divRoot_mel').value;
-        if (sysIdVal && typeof jQuery !== 'undefined' && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
-        jQuery.ajax({ url: url, type: 'POST', dataType: 'json', data: { ajax: 1, action: 'get_details_mel', sku: sku, sys_divRoot: sysRootVal, sys_divId: sysIdVal }, success: function (res) { if (res.ok) { vTitleMel.innerText = res.titulo; vSkuMel.innerText = res.sku; vBrandMel.innerText = res.marca; vDescMel.innerHTML = res.desc ? res.desc : '<em>Sem descrição.</em>'; const mT = getMetaNotaMel(res.scores.tit); elTSMel.style.backgroundColor = mT.c; elTSMel.innerText = res.scores.tit + ' - ' + mT.t; const mD = getMetaNotaMel(res.scores.desc); elDSMel.style.backgroundColor = mD.c; elDSMel.innerText = res.scores.desc + ' - ' + mD.t; const mI = getMetaNotaMel(res.scores.img); elISMel.style.backgroundColor = mI.c; elISMel.innerText = 'Fotos: ' + res.scores.img + ' (' + mI.t + ')'; const mA = getMetaNotaMel(res.scores.attr); elASMel.style.backgroundColor = mA.c; elASMel.innerText = res.scores.attr + ' - ' + mA.t; vThumbsMel.innerHTML = ''; if (res.imgs.length > 0) vHeroMel.src = res.imgs[0]; res.imgs.forEach((url, idx) => { let img = document.createElement('img'); img.src = url; img.className = 'vis-mini'; if (idx === 0) img.classList.add('active'); img.onclick = () => { vHeroMel.src = url; document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active')); img.classList.add('active'); }; vThumbsMel.appendChild(img); }); let h = '<table class="vis-specs-table">'; let has = false; if (res.specs.EAN) { h += `<tr><td><strong>EAN:</strong> ${res.specs.EAN}</td></tr>`; has = true; } if (res.specs.Garantia) { h += `<tr><td><strong>Garantia:</strong> ${res.specs.Garantia}</td></tr>`; has = true; } if (res.specs.Peso) { h += `<tr><td><strong>Peso:</strong> ${res.specs.Peso}</td></tr>`; has = true; } if (res.specs.Altura) { h += `<tr><td><strong>Altura:</strong> ${res.specs.Altura}</td></tr>`; has = true; } if (res.specs.Largura) { h += `<tr><td><strong>Largura:</strong> ${res.specs.Largura}</td></tr>`; has = true; } if (res.specs.Comprimento) { h += `<tr><td><strong>Comp.:</strong> ${res.specs.Comprimento}</td></tr>`; has = true; } h += '</table>'; vSpecsMel.innerHTML = has ? h : '<div style="color:#999;font-size:12px">Vazio</div>'; mVisMel.style.display = 'flex'; } else { alert(res.msg || 'Erro ao carregar'); } }, error: function () { alert('Erro na comunicação'); }, complete: function () { if (sysIdVal && typeof jQuery !== 'undefined' && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).hideLoading(); } });
+function abrirVisualizadorMel(sku) {
+        var url = document.getElementById('hardness_ajaxUrl_mel').value;
+        var sysIdVal = document.getElementById('sys_base_divId_mel').value;
+        var sysRootVal = document.getElementById('sys_base_divRoot_mel').value;
+
+        // Mostra loading se o ID do sistema existir
+        if (sysIdVal && typeof jQuery !== 'undefined' && jQuery('#' + sysIdVal).length) {
+            jQuery('#' + sysIdVal).showLoading();
+        }
+
+        jQuery.ajax({
+            url: url,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                ajax: 1,
+                action: 'get_details_mel',
+                sku: sku,
+                sys_divRoot: sysRootVal,
+                sys_divId: sysIdVal
+            },
+            success: function (res) {
+                if (res.ok) {
+                    // 1. Preenchimento dos Textos Básicos
+                    vTitleMel.innerText = res.titulo;
+                    vSkuMel.innerText = res.sku;
+                    vBrandMel.innerText = res.marca;
+                    vDescMel.innerHTML = res.desc ? res.desc : '<em>Sem descrição.</em>';
+
+                    // 2. Cores e Notas (Scores) - Título
+                    const mT = getMetaNotaMel(res.scores.tit);
+                    elTSMel.style.backgroundColor = mT.c;
+                    elTSMel.innerText = res.scores.tit + ' - ' + mT.t;
+
+                    // Descrição
+                    const mD = getMetaNotaMel(res.scores.desc);
+                    elDSMel.style.backgroundColor = mD.c;
+                    elDSMel.innerText = res.scores.desc + ' - ' + mD.t;
+
+                    // Imagens
+                    const mI = getMetaNotaMel(res.scores.img);
+                    elISMel.style.backgroundColor = mI.c;
+                    elISMel.innerText = 'Fotos: ' + res.scores.img + ' (' + mI.t + ')';
+
+                    // Atributos
+                    const mA = getMetaNotaMel(res.scores.attr);
+                    elASMel.style.backgroundColor = mA.c;
+                    elASMel.innerText = res.scores.attr + ' - ' + mA.t;
+
+                    // 3. Galeria de Imagens (Thumbs e Hero)
+                    vThumbsMel.innerHTML = '';
+                    if (res.imgs.length > 0) {
+                        vHeroMel.src = res.imgs[0];
+                    } else {
+                        vHeroMel.src = ''; // Limpa se não tiver imagem ou põe placeholder
+                    }
+
+                    res.imgs.forEach((url, idx) => {
+                        let img = document.createElement('img');
+                        img.src = url;
+                        img.className = 'vis-mini';
+                        if (idx === 0) img.classList.add('active');
+
+                        // Lógica de clique na miniatura
+                        img.onclick = () => {
+                            vHeroMel.src = url;
+                            document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active'));
+                            img.classList.add('active');
+                        };
+                        vThumbsMel.appendChild(img);
+                    });
+
+                    // 4. Tabela de Especificações Dinâmica
+                    let h = '<table class="vis-specs-table">';
+                    let has = false;
+                    
+                    if (res.specs.EAN) { h += `<tr><td><strong>EAN:</strong> ${res.specs.EAN}</td></tr>`; has = true; }
+                    if (res.specs.Garantia) { h += `<tr><td><strong>Garantia:</strong> ${res.specs.Garantia}</td></tr>`; has = true; }
+                    if (res.specs.Peso) { h += `<tr><td><strong>Peso:</strong> ${res.specs.Peso}</td></tr>`; has = true; }
+                    if (res.specs.Altura) { h += `<tr><td><strong>Altura:</strong> ${res.specs.Altura}</td></tr>`; has = true; }
+                    if (res.specs.Largura) { h += `<tr><td><strong>Largura:</strong> ${res.specs.Largura}</td></tr>`; has = true; }
+                    if (res.specs.Comprimento) { h += `<tr><td><strong>Comp.:</strong> ${res.specs.Comprimento}</td></tr>`; has = true; }
+                    
+                    h += '</table>';
+                    vSpecsMel.innerHTML = has ? h : '<div style="color:#999;font-size:12px">Vazio</div>';
+
+                    // 5. Exibe o Modal
+                    mVisMel.style.display = 'flex';
+                } else {
+                    // Erro tratado com Modal Customizado
+                    customAlertMel('Erro', res.msg || 'Erro ao carregar produto.');
+                }
+            },
+            error: function () {
+                // Erro de Ajax tratado com Modal Customizado
+                customAlertMel('Erro', 'Erro na comunicação.');
+            },
+            complete: function () {
+                if (sysIdVal && typeof jQuery !== 'undefined' && jQuery('#' + sysIdVal).length) {
+                    jQuery('#' + sysIdVal).hideLoading();
+                }
+            }
+        });
     }
     function fecharVisMel() { mVisMel.style.display = 'none'; }
     document.addEventListener('keydown', e => { if (e.key === "Escape") fecharVisMel() });
@@ -1241,34 +1455,79 @@ echo "<div id='demoMel'></div></div>";
         });
     }
 
-    function syncAnyMarketItemMel(id) {
-        if(!confirm('Deseja buscar os dados mais recentes deste item na AnyMarket?')) return;
-        var url = jQuery('#hardness_ajaxUrl_mel').val(); var sysId = jQuery('#sys_base_divId_mel').val(); var sysRoot = jQuery('#sys_base_divRoot_mel').val();
-        if (sysId) jQuery('#' + sysId).showLoading();
-        jQuery.ajax({
-            url: url, type: 'POST', dataType: 'json',
-            data: { ajax: 1, action: 'sync_anymarket_item_mel', id: id, sys_divRoot: sysRoot, sys_divId: sysId },
-            success: function(res) { if (res.ok) { alert(res.msg); appMel.loadData(1); } else { alert('Erro: ' + res.msg); } },
-            error: function() { alert('Erro de comunicação.'); },
-            complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); }
-        });
+function syncAnyMarketItemMel(id) {
+        // AQUI MUDOU: Chama o customConfirmMel e passa a lógica como callback
+        customConfirmMel(
+            'Atualizar Item', 
+            'Deseja buscar os dados mais recentes deste item na AnyMarket? Isso irá sobrepor os dados atuais.',
+            function() {
+                var url = jQuery('#hardness_ajaxUrl_mel').val(); 
+                var sysId = jQuery('#sys_base_divId_mel').val(); 
+                var sysRoot = jQuery('#sys_base_divRoot_mel').val();
+                
+                if (sysId) jQuery('#' + sysId).showLoading();
+                
+                jQuery.ajax({
+                    url: url, type: 'POST', dataType: 'json',
+                    data: { ajax: 1, action: 'sync_anymarket_item_mel', id: id, sys_divRoot: sysRoot, sys_divId: sysId },
+                    success: function(res) { 
+                        if (res.ok) { 
+                            customAlertMel('Sincronizado', res.msg); // Alert Customizado
+                            appMel.loadData(1); 
+                        } else { 
+                            customAlertMel('Erro', res.msg); // Alert Customizado
+                        } 
+                    },
+                    error: function() { customAlertMel('Erro', 'Falha na comunicação com o servidor.'); },
+                    complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); }
+                });
+            }
+        );
     }
 
-    function syncAnyMarketMassaMel() {
+function syncAnyMarketMassaMel() {
         var checked = jQuery('.row-check:checked');
-        if (checked.length === 0) { alert('Selecione pelo menos um item.'); return; }
-        if (checked.length > 40) { alert('Limite de 40 itens por vez excedido (Selecionados: ' + checked.length + ').'); return; }
-        if (!confirm('Deseja sincronizar os ' + checked.length + ' itens selecionados?')) return;
-        var ids = []; checked.each(function() { ids.push(jQuery(this).val()); });
-        var url = jQuery('#hardness_ajaxUrl_mel').val(); var sysId = jQuery('#sys_base_divId_mel').val(); var sysRoot = jQuery('#sys_base_divRoot_mel').val();
-        if (sysId) jQuery('#' + sysId).showLoading();
-        jQuery.ajax({
-            url: url, type: 'POST', dataType: 'json',
-            data: { ajax: 1, action: 'sync_anymarket_massa_mel', ids: ids, sys_divRoot: sysRoot, sys_divId: sysId },
-            success: function(res) { if (res.ok) { alert(res.msg); appMel.loadData(1); } else { alert('Erro: ' + res.msg); } },
-            error: function() { alert('Erro de comunicação.'); },
-            complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); }
-        });
+        
+        if (checked.length === 0) { 
+            customAlertMel('Seleção Vazia', 'Selecione pelo menos um item para sincronizar.'); 
+            return; 
+        }
+        
+        if (checked.length > 40) { 
+            customAlertMel('Limite Excedido', 'Por segurança, o limite é de 40 itens por vez.<br>Você selecionou: <b>' + checked.length + '</b>.'); 
+            return; 
+        }
+        
+        // AQUI MUDOU: Chama o customConfirmMel
+        customConfirmMel(
+            'Sincronizar em Massa',
+            'Deseja sincronizar os ' + checked.length + ' itens selecionados com a AnyMarket?',
+            function() {
+                var ids = []; 
+                checked.each(function() { ids.push(jQuery(this).val()); });
+                
+                var url = jQuery('#hardness_ajaxUrl_mel').val(); 
+                var sysId = jQuery('#sys_base_divId_mel').val(); 
+                var sysRoot = jQuery('#sys_base_divRoot_mel').val();
+                
+                if (sysId) jQuery('#' + sysId).showLoading();
+                
+                jQuery.ajax({
+                    url: url, type: 'POST', dataType: 'json',
+                    data: { ajax: 1, action: 'sync_anymarket_massa_mel', ids: ids, sys_divRoot: sysRoot, sys_divId: sysId },
+                    success: function(res) { 
+                        if (res.ok) { 
+                            customAlertMel('Concluído', res.msg); 
+                            appMel.loadData(1); 
+                        } else { 
+                            customAlertMel('Erro', 'Ocorreu um erro: ' + res.msg); 
+                        } 
+                    },
+                    error: function() { customAlertMel('Erro', 'Erro de comunicação.'); },
+                    complete: function() { if (sysId) jQuery('#' + sysId).hideLoading(); }
+                });
+            }
+        );
     }
 
     // [NOVO] Inicialização: Tenta carregar cache ao iniciar o script
