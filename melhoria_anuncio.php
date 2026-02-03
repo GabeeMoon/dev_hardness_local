@@ -1,7 +1,7 @@
 <?php
 /*
- PAINEL DE MELHORIA DE ANUNCIO (D001E) - QUALITY SCORE 3.0
- ATUALIZADO: LOGICA MASTER POPULADOR + CONSOLE DE PROGRESSO
+ PAINEL DE MELHORIA DE ANUNCIO (D001E) - QUALITY SCORE 3.2
+ ATUALIZADO: CAPTURA DE DIMENSÕES DE IMAGEM (WIDTH/HEIGHT)
  */
 namespace hardness;
 
@@ -15,7 +15,7 @@ ini_set('display_errors', 1);
 
 $qtdePorPagina = 40;
 $limit         = $qtdePorPagina;
-
+    
 // Recuperação de variáveis de ambiente
 $gDivRoot = isset($g['divRoot']) && $g['divRoot'] != "" ? $g['divRoot'] : (isset($_POST['sys_divRoot']) ? $_POST['sys_divRoot'] : (isset($_POST['divIdRoot']) ? $_POST['divIdRoot'] : ''));
 $gDivId   = isset($g['divId']) && $g['divId'] != "" ? $g['divId'] : (isset($_POST['sys_divId']) ? $_POST['sys_divId'] : (isset($_POST['divId']) ? $_POST['divId'] : 'contentMel'));
@@ -303,7 +303,7 @@ if ($isAjax) {
         }
     }
 
-    // --- SYNC INDIVIDUAL E EM MASSA (JÁ ESTAVA CORRETO) ---
+    // --- SYNC INDIVIDUAL E EM MASSA (ATUALIZADO COM WIDTH/HEIGHT) ---
     if (isset($_POST['action']) && ($_POST['action'] === 'sync_anymarket_item_mel' || $_POST['action'] === 'sync_anymarket_massa_mel')) {
         $ids = isset($_POST['ids']) ? $_POST['ids'] : [$_POST['id']];
         if (!is_array($ids)) $ids = explode(',', $ids);
@@ -349,9 +349,18 @@ if ($isAjax) {
                         $largura = isset($d['width']) ? $d['width'] : '';
                         $comprimento = isset($d['length']) ? $d['length'] : '';
 
+                        // CAPTURA IMAGENS COM METADADOS
                         $imagens = [];
                         if (!empty($d['images']) && is_array($d['images'])) {
-                            foreach ($d['images'] as $img) if (!empty($img['url'])) $imagens[] = $img['url'];
+                            foreach ($d['images'] as $img) {
+                                if (!empty($img['url'])) {
+                                    $imagens[] = [
+                                        'url' => $img['url'],
+                                        'w'   => isset($img['originalWidth']) ? $img['originalWidth'] : '',
+                                        'h'   => isset($img['originalHeight']) ? $img['originalHeight'] : ''
+                                    ];
+                                }
+                            }
                         }
 
                         $tituloSku = ''; $ean = '';
@@ -377,10 +386,18 @@ if ($isAjax) {
                              $safeVal = \mysqli_real_escape_string($con, $val);
                              $sets[]  = "$col = '$safeVal'";
                         }
+                        
+                        // UPDATE DAS IMAGENS E DIMENSÕES
                         $imgsFinal = array_slice($imagens, 0, 10);
                         for ($i = 1; $i <= 10; $i++) {
-                            $urlImg = isset($imgsFinal[$i - 1]) ? \mysqli_real_escape_string($con, $imgsFinal[$i - 1]) : '';
+                            $dataUrl = isset($imgsFinal[$i - 1]) ? $imgsFinal[$i - 1] : null;
+                            $urlImg = $dataUrl ? \mysqli_real_escape_string($con, $dataUrl['url']) : '';
+                            $wImg   = $dataUrl ? \mysqli_real_escape_string($con, $dataUrl['w']) : '';
+                            $hImg   = $dataUrl ? \mysqli_real_escape_string($con, $dataUrl['h']) : '';
+
                             $sets[] = "D001E_Imagem_$i = '$urlImg'";
+                            $sets[] = "D001E_Imagem_{$i}_width = '$wImg'";
+                            $sets[] = "D001E_Imagem_{$i}_Height = '$hImg'";
                         }
                         $sets[] = "D001E_ult_att = NOW()";
 
@@ -396,7 +413,7 @@ if ($isAjax) {
         exit;
     }
 
-    // --- SYNC AUTOMÁTICO COMPLETO (AGORA COM LÓGICA DO POPULADOR MASTER) ---
+    // --- SYNC AUTOMÁTICO COMPLETO (ATUALIZADO COM WIDTH/HEIGHT E JOIN D001A) ---
     if (isset($_POST['action']) && $_POST['action'] === 'sync_auto_full_mel') {
         header('Content-Type: application/json; charset=UTF-8');
         set_time_limit(180); 
@@ -404,16 +421,83 @@ if ($isAjax) {
         
         if (!$con) { ob_end_clean(); echo json_encode(['ok' => 0, 'msg' => 'Sem conexao com banco (mysqli).']); exit; }
 
-        // PASSO 1: UPDATE DE FLAGS E INSERÇÃO DO ESQUELETO (Ids, Codigo, Flag)
-        $sqlUpdateForce = "UPDATE D001E e INNER JOIN D001 d ON e.D001E_D001_Id = d.D001_Id SET e.D001E_Flag_Ecommerce = d.D001_Flag_Ecommerce WHERE e.D001E_Flag_Ecommerce IS NULL OR e.D001E_Flag_Ecommerce = '' OR e.D001E_Flag_Ecommerce <> d.D001_Flag_Ecommerce";
-        \mysqli_query($con, $sqlUpdateForce);
-        $totalCorrigidos = \mysqli_affected_rows($con);
+        // ARRAYS PARA RELATÓRIO DETALHADO
+        $listFlags = [];
+        $listNovos = [];
+        $details   = [];
 
-        $sqlInsertNovos = "INSERT INTO D001E (D001E_D001_Id, D001E_D001_Codigo_Produto, D001E_Flag_Ecommerce, D001E_ult_att) SELECT d.D001_Id, d.D001_Codigo_Produto, d.D001_Flag_Ecommerce, NOW() FROM D001 d WHERE (d.D001_Flag_Ecommerce = 'S' OR d.D001_Flag_Ecommerce = 's') AND NOT EXISTS (SELECT 1 FROM D001E e WHERE e.D001E_D001_Id = d.D001_Id)";
-        \mysqli_query($con, $sqlInsertNovos);
-        $totalInseridos = \mysqli_affected_rows($con);
+        // ---------------------------------------------------------
+        // PASSO 1: UPDATE DE FLAGS
+        // ---------------------------------------------------------
+        
+        $sqlCheckFlags = "SELECT e.D001E_D001_Codigo_Produto, d.D001_Flag_Ecommerce, da.D001A_Flag_Publicar 
+                          FROM D001E e 
+                          INNER JOIN D001 d ON e.D001E_D001_Id = d.D001_Id 
+                          LEFT JOIN D001A da ON da.D001A_D001_Id = d.D001_Id
+                          WHERE e.D001E_Flag_Ecommerce <> d.D001_Flag_Ecommerce 
+                             OR (e.D001E_Flag_Publicar IS NULL OR e.D001E_Flag_Publicar <> da.D001A_Flag_Publicar)";
+        
+        $rsFlags = \mysqli_query($con, $sqlCheckFlags);
+        if ($rsFlags) {
+            while ($rf = \mysqli_fetch_assoc($rsFlags)) {
+                $flagPub = isset($rf['D001A_Flag_Publicar']) ? $rf['D001A_Flag_Publicar'] : 'N';
+                $listFlags[] = [
+                    'sku' => $rf['D001E_D001_Codigo_Produto'],
+                    'msg' => "Eco: {$rf['D001_Flag_Ecommerce']} | Pub: $flagPub"
+                ];
+            }
+        }
 
-        $details = [];
+        $sqlUpdateForce = "UPDATE D001E e 
+                           INNER JOIN D001 d ON e.D001E_D001_Id = d.D001_Id 
+                           LEFT JOIN D001A da ON da.D001A_D001_Id = d.D001_Id
+                           SET e.D001E_Flag_Ecommerce = d.D001_Flag_Ecommerce,
+                               e.D001E_Flag_Publicar = da.D001A_Flag_Publicar
+                           WHERE e.D001E_Flag_Ecommerce <> d.D001_Flag_Ecommerce 
+                              OR e.D001E_Flag_Publicar <> da.D001A_Flag_Publicar 
+                              OR e.D001E_Flag_Publicar IS NULL";
+        
+        if (\mysqli_query($con, $sqlUpdateForce)) {
+            $totalCorrigidos = \mysqli_affected_rows($con);
+        } else {
+            $totalCorrigidos = 0;
+            $details[] = ['sku' => 'SISTEMA', 'idAny' => 'SQL', 'status' => 'Erro Update', 'msg' => \mysqli_error($con)];
+        }
+
+        // ---------------------------------------------------------
+        // PASSO 2: INSERÇÃO DE NOVOS
+        // ---------------------------------------------------------
+        
+        $sqlCheckNovos = "SELECT d.D001_Codigo_Produto 
+                          FROM D001 d 
+                          LEFT JOIN D001A da ON da.D001A_D001_Id = d.D001_Id
+                          WHERE (d.D001_Flag_Ecommerce = 'S' OR da.D001A_Flag_Publicar = 'S') 
+                          AND NOT EXISTS (SELECT 1 FROM D001E e WHERE e.D001E_D001_Id = d.D001_Id)";
+        
+        $rsNovos = \mysqli_query($con, $sqlCheckNovos);
+        if ($rsNovos) {
+            while ($rn = \mysqli_fetch_assoc($rsNovos)) {
+                $listNovos[] = ['sku' => $rn['D001_Codigo_Produto'], 'msg' => 'Inserido na fila'];
+            }
+        }
+
+        $sqlInsertNovos = "INSERT INTO D001E (D001E_D001_Id, D001E_D001_Codigo_Produto, D001E_Flag_Ecommerce, D001E_Flag_Publicar, D001E_ult_att) 
+                           SELECT d.D001_Id, d.D001_Codigo_Produto, d.D001_Flag_Ecommerce, da.D001A_Flag_Publicar, NOW() 
+                           FROM D001 d 
+                           LEFT JOIN D001A da ON da.D001A_D001_Id = d.D001_Id
+                           WHERE (d.D001_Flag_Ecommerce = 'S' OR da.D001A_Flag_Publicar = 'S') 
+                           AND NOT EXISTS (SELECT 1 FROM D001E e WHERE e.D001E_D001_Id = d.D001_Id)";
+        
+        if (\mysqli_query($con, $sqlInsertNovos)) {
+            $totalInseridos = \mysqli_affected_rows($con);
+        } else {
+            $totalInseridos = 0;
+            $details[] = ['sku' => 'SISTEMA', 'idAny' => 'SQL', 'status' => 'Erro Insert', 'msg' => \mysqli_error($con)];
+        }
+
+        // ---------------------------------------------------------
+        // PASSO 3: LOOP POPULADOR ANYMARKET
+        // ---------------------------------------------------------
         if (!class_exists('hardness\API001') && !class_exists('API001')) { $pathAPI = 'bibliotecas/classes/API001.php'; if (file_exists($pathAPI)) require_once($pathAPI); }
         if (!class_exists('hardness\GMP010') && !class_exists('GMP010')) { $pathGMP = 'bibliotecas/classes/GMP010.php'; if (file_exists($pathGMP)) require_once($pathGMP); }
 
@@ -423,22 +507,27 @@ if ($isAjax) {
             $gmpClass = class_exists('hardness\GMP010') ? 'hardness\GMP010' : 'GMP010'; $apiManager = new $gmpClass($baseUrl, $token, 3, [], 'error_log', null);
 
             $contador = 0;
-            // PASSO 2: LOOP PARA POPULAR (Lógica do Master)
+            
             while ($contador < 40) {
-                // Pega quem está com ID Any vazio (ou seja, novo ou não processado)
+                // Busca o mais antigo na fila que não tem ID Any
                 $sqlBusca = "SELECT * FROM D001E WHERE (D001E_Id_Any IS NULL OR D001E_Id_Any = '') ORDER BY D001E_ult_att ASC LIMIT 1";
                 $rs = \mysqli_query($con, $sqlBusca);
-                if (!$rs || \mysqli_num_rows($rs) == 0) break;
+                if (!$rs || \mysqli_num_rows($rs) == 0) break; // Acabou a fila
 
-                $atual = \mysqli_fetch_assoc($rs); $idTable = (int)$atual['D001E_Id']; $sku = trim($atual['D001E_D001_Codigo_Produto']);
+                $atual = \mysqli_fetch_assoc($rs); 
+                $idTable = (int)$atual['D001E_Id']; 
+                $sku = trim($atual['D001E_D001_Codigo_Produto']);
                 
                 if (empty($sku)) { \mysqli_query($con, "UPDATE D001E SET D001E_ult_att = NOW() WHERE D001E_Id = $idTable"); continue; }
 
                 $logItem = ['sku' => $sku, 'idAny' => '-', 'status' => 'Erro', 'msg' => ''];
-                
+                $contador++; 
+
                 try {
                     $endpoint = "/products?sku=" . urlencode($sku);
-                    $resp = $apiManager->request($endpoint, 'GET', null, true, ['return_on_failure' => true]); $contador++;
+                    $resp = $apiManager->request($endpoint, 'GET', null, true, ['return_on_failure' => true]);
+
+                    $found = false;
 
                     if (isset($resp['code']) && $resp['code'] == 200) {
                         $bodyRaw = isset($resp['body']) ? $resp['body'] : null;
@@ -447,9 +536,8 @@ if ($isAjax) {
                         if (!empty($body['content'][0])) {
                             $d = $body['content'][0];
                             
-                            // 2.1 Dados do Pai
-                            $idAnySku  = isset($d['id']) ? (int)$d['id'] : 0;
-                            $titulo    = isset($d['title']) ? $d['title'] : '';
+                            $idAnySku = isset($d['id']) ? (int)$d['id'] : 0;
+                            $titulo   = isset($d['title']) ? $d['title'] : '';
                             $descricao = isset($d['description']) ? $d['description'] : '';
                             
                             $marca = '';
@@ -463,81 +551,98 @@ if ($isAjax) {
                             $largura     = isset($d['width']) ? $d['width'] : '';
                             $comprimento = isset($d['length']) ? $d['length'] : '';
 
-                            // 2.2 Imagens
+                            // CAPTURA IMAGENS COM METADADOS
                             $imagens = [];
                             if (!empty($d['images']) && is_array($d['images'])) {
-                                foreach ($d['images'] as $img) if (!empty($img['url'])) $imagens[] = $img['url'];
+                                foreach ($d['images'] as $img) {
+                                    if (!empty($img['url'])) {
+                                        $imagens[] = [
+                                            'url' => $img['url'],
+                                            'w'   => isset($img['originalWidth']) ? $img['originalWidth'] : '',
+                                            'h'   => isset($img['originalHeight']) ? $img['originalHeight'] : ''
+                                        ];
+                                    }
+                                }
                             }
 
-                            // 2.3 Dados da Variação (SKU Específico)
                             $tituloSku = ''; $ean = '';
                             if (isset($d['skus']) && is_array($d['skus'])) {
                                 if (!empty($d['skus'][0]['ean'])) $ean = $d['skus'][0]['ean'];
                                 foreach ($d['skus'] as $s) {
-                                    // A LÓGICA IMPORTANTE: Procura pelo SKU exato
                                     if ((isset($s['partnerId']) && strval($s['partnerId']) === strval($sku)) || count($d['skus']) == 1) {
                                         $tituloSku = isset($s['title']) ? $s['title'] : '';
                                         if (!empty($s['ean'])) $ean = $s['ean'];
+                                        $found = true;
                                     }
                                 }
+                            } else {
+                                $found = true; 
                             }
                             
-                            $logItem['status'] = 'Sucesso'; $logItem['idAny'] = $idAnySku; $logItem['msg'] = 'Encontrado';
+                            if ($found) {
+                                $logItem['status'] = 'Sucesso'; 
+                                $logItem['idAny'] = $idAnySku; 
+                                $logItem['msg'] = 'Encontrado e Atualizado';
 
-                            // 2.4 Prepara Update
-                            $sets = [];
-                            if ($idAnySku > 0) $sets[] = "D001E_Id_Any = $idAnySku";
-                            if (!empty($tituloSku)) {
-                                $ts = \mysqli_real_escape_string($con, $tituloSku);
-                                $sets[] = "D001E_Sku_Titulo = '$ts'";
-                            }
+                                $sets = [];
+                                if ($idAnySku > 0) $sets[] = "D001E_Id_Any = $idAnySku";
+                                if (!empty($tituloSku)) { $ts = \mysqli_real_escape_string($con, $tituloSku); $sets[] = "D001E_Sku_Titulo = '$ts'"; }
+                                
+                                $camposTexto = [
+                                    'D001E_Titulo' => $titulo, 'D001E_Descricao' => $descricao, 'D001E_Marca' => $marca, 'D001E_EAN' => $ean,
+                                    'D001E_garantia' => $garantia, 'D001E_peso' => $peso, 'D001E_altura' => $altura, 'D001E_largura' => $largura, 'D001E_comprimento' => $comprimento
+                                ];
+                                foreach ($camposTexto as $col => $val) { $safeVal = \mysqli_real_escape_string($con, $val); $sets[] = "$col = '$safeVal'"; }
+                                
+                                // UPDATE DAS IMAGENS E DIMENSÕES
+                                $imgsFinal = array_slice($imagens, 0, 10);
+                                for ($i = 1; $i <= 10; $i++) {
+                                    $dataUrl = isset($imgsFinal[$i - 1]) ? $imgsFinal[$i - 1] : null;
+                                    $urlImg = $dataUrl ? \mysqli_real_escape_string($con, $dataUrl['url']) : '';
+                                    $wImg   = $dataUrl ? \mysqli_real_escape_string($con, $dataUrl['w']) : '';
+                                    $hImg   = $dataUrl ? \mysqli_real_escape_string($con, $dataUrl['h']) : '';
 
-                            $camposTexto = [
-                                'D001E_Titulo'      => $titulo,
-                                'D001E_Descricao'   => $descricao,
-                                'D001E_Marca'       => $marca,
-                                'D001E_EAN'         => $ean,
-                                'D001E_garantia'    => $garantia,
-                                'D001E_peso'        => $peso,
-                                'D001E_altura'      => $altura,
-                                'D001E_largura'     => $largura,
-                                'D001E_comprimento' => $comprimento
-                            ];
-                            foreach ($camposTexto as $col => $val) {
-                                $safeVal = \mysqli_real_escape_string($con, $val);
-                                $sets[]  = "$col = '$safeVal'";
-                            }
+                                    $sets[] = "D001E_Imagem_$i = '$urlImg'";
+                                    $sets[] = "D001E_Imagem_{$i}_width = '$wImg'";
+                                    $sets[] = "D001E_Imagem_{$i}_Height = '$hImg'";
+                                }
+                                $sets[] = "D001E_ult_att = NOW()"; 
 
-                            $imgsFinal = array_slice($imagens, 0, 10);
-                            for ($i = 1; $i <= 10; $i++) {
-                                $urlImg = isset($imgsFinal[$i - 1]) ? \mysqli_real_escape_string($con, $imgsFinal[$i - 1]) : '';
-                                $sets[] = "D001E_Imagem_$i = '$urlImg'";
-                            }
-
-                            $sets[] = "D001E_ult_att = NOW()";
-
-                            if (!empty($sets)) {
-                                \mysqli_query($con, "UPDATE D001E SET " . implode(', ', $sets) . " WHERE D001E_Id = $idTable");
+                                if (!empty($sets)) {
+                                    \mysqli_query($con, "UPDATE D001E SET " . implode(', ', $sets) . " WHERE D001E_Id = $idTable");
+                                }
                             }
                         }
+                    } 
+                    
+                    if (!$found) {
+                        $logItem['status'] = 'Skipped';
+                        $logItem['msg'] = 'Não encontrado na AnyMarket ou retorno vazio';
+                        \mysqli_query($con, "UPDATE D001E SET D001E_ult_att = NOW() WHERE D001E_Id = $idTable");
                     }
-                } catch (\Exception $e) { $logItem['msg'] = $e->getMessage(); }
-                
-                // Se não achou na API ou deu erro, atualiza a data mesmo assim para não travar o loop
-                if ($logItem['status'] !== 'Sucesso') {
+
+                } catch (\Exception $e) { 
+                    $logItem['msg'] = $e->getMessage();
                     \mysqli_query($con, "UPDATE D001E SET D001E_ult_att = NOW() WHERE D001E_Id = $idTable");
                 }
                 
                 $details[] = $logItem;
-                usleep(500000);
+                usleep(300000); 
             }
         } catch (\Exception $e) { $details[] = ['sku' => '-', 'idAny' => '-', 'status' => 'Fatal', 'msg' => $e->getMessage()]; }
         
         ob_end_clean();
-        echo json_encode(['ok' => 1, 'summary' => ['flags' => $totalCorrigidos, 'novos' => $totalInseridos], 'details' => $details]); exit;
+        
+        echo json_encode([
+            'ok' => 1, 
+            'summary' => ['flags' => $totalCorrigidos, 'novos' => $totalInseridos], 
+            'lists' => ['flags' => $listFlags, 'novos' => $listNovos],
+            'details' => $details
+        ]); 
+        exit;
     }
 
-    // --- ENVIO PARA CORREÇÃO (CORRIGIDO MYSQLI) ---
+    // --- ENVIO PARA CORREÇÃO (ATUALIZADO COM WIDTH/HEIGHT NO INSERT) ---
     if (isset($_POST['action']) && $_POST['action'] === 'send_correction_mel') {
         $ids = isset($_POST['ids']) ? $_POST['ids'] : []; if (!is_array($ids)) $ids = explode(',', $ids);
         $tipo = isset($_POST['tipo']) ? $_POST['tipo'] : 'corr';
@@ -552,8 +657,32 @@ if ($isAjax) {
                 $sku = \mysqli_real_escape_string($con, $src['D001E_D001_Codigo_Produto']);
                 $check = \mysqli_query($con, "SELECT D001F_Id FROM D001F WHERE D001F_D001_Codigo_Produto = '$sku'");
                 if (\mysqli_num_rows($check) == 0) {
-                    $cols = "D001F_D001_Id, D001F_D001_Codigo_Produto, D001F_Id_Any, D001F_Titulo, D001F_Marca, D001F_Descricao, D001F_Imagem_1, D001F_Imagem_2, D001F_Imagem_3, D001F_Imagem_4, D001F_Imagem_5, D001F_Imagem_6, D001F_Imagem_7, D001F_Imagem_8, D001F_Imagem_9, D001F_Imagem_10, D001F_EAN, D001F_garantia, D001F_peso, D001F_altura, D001F_largura, D001F_comprimento, D001F_ult_att, D001F_Tipo, D001F_Obs, D001F_tags";
-                    $vals = "'" . \mysqli_real_escape_string($con, $src['D001E_D001_Id']) . "','" . $sku . "','" . \mysqli_real_escape_string($con, $src['D001E_Id_Any']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Sku_Titulo']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Marca']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Descricao']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_1']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_2']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_3']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_4']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_5']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_6']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_7']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_8']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_9']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_10']) . "','" . \mysqli_real_escape_string($con, $src['D001E_EAN']) . "','" . \mysqli_real_escape_string($con, $src['D001E_garantia']) . "','" . \mysqli_real_escape_string($con, $src['D001E_peso']) . "','" . \mysqli_real_escape_string($con, $src['D001E_altura']) . "','" . \mysqli_real_escape_string($con, $src['D001E_largura']) . "','" . \mysqli_real_escape_string($con, $src['D001E_comprimento']) . "', NOW(), '$tipo', '$obs', '$tags'";
+                    $cols = "D001F_D001_Id, D001F_D001_Codigo_Produto, D001F_Id_Any, D001F_Titulo, D001F_Marca, D001F_Descricao, 
+                    D001F_Imagem_1, D001F_Imagem_1_width, D001F_Imagem_1_Height, 
+                    D001F_Imagem_2, D001F_Imagem_2_width, D001F_Imagem_2_Height, 
+                    D001F_Imagem_3, D001F_Imagem_3_width, D001F_Imagem_3_Height, 
+                    D001F_Imagem_4, D001F_Imagem_4_width, D001F_Imagem_4_Height, 
+                    D001F_Imagem_5, D001F_Imagem_5_width, D001F_Imagem_5_Height, 
+                    D001F_Imagem_6, D001F_Imagem_6_width, D001F_Imagem_6_Height, 
+                    D001F_Imagem_7, D001F_Imagem_7_width, D001F_Imagem_7_Height, 
+                    D001F_Imagem_8, D001F_Imagem_8_width, D001F_Imagem_8_Height, 
+                    D001F_Imagem_9, D001F_Imagem_9_width, D001F_Imagem_9_Height, 
+                    D001F_Imagem_10, D001F_Imagem_10_width, D001F_Imagem_10_Height, 
+                    D001F_EAN, D001F_garantia, D001F_peso, D001F_altura, D001F_largura, D001F_comprimento, D001F_ult_att, D001F_Tipo, D001F_Obs, D001F_tags";
+                    
+                    $vals = "'" . \mysqli_real_escape_string($con, $src['D001E_D001_Id']) . "','" . $sku . "','" . \mysqli_real_escape_string($con, $src['D001E_Id_Any']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Sku_Titulo']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Marca']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Descricao']) . "',
+                    '" . \mysqli_real_escape_string($con, $src['D001E_Imagem_1']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_1_width']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_1_Height']) . "',
+                    '" . \mysqli_real_escape_string($con, $src['D001E_Imagem_2']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_2_width']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_2_Height']) . "',
+                    '" . \mysqli_real_escape_string($con, $src['D001E_Imagem_3']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_3_width']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_3_Height']) . "',
+                    '" . \mysqli_real_escape_string($con, $src['D001E_Imagem_4']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_4_width']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_4_Height']) . "',
+                    '" . \mysqli_real_escape_string($con, $src['D001E_Imagem_5']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_5_width']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_5_Height']) . "',
+                    '" . \mysqli_real_escape_string($con, $src['D001E_Imagem_6']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_6_width']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_6_Height']) . "',
+                    '" . \mysqli_real_escape_string($con, $src['D001E_Imagem_7']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_7_width']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_7_Height']) . "',
+                    '" . \mysqli_real_escape_string($con, $src['D001E_Imagem_8']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_8_width']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_8_Height']) . "',
+                    '" . \mysqli_real_escape_string($con, $src['D001E_Imagem_9']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_9_width']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_9_Height']) . "',
+                    '" . \mysqli_real_escape_string($con, $src['D001E_Imagem_10']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_10_width']) . "','" . \mysqli_real_escape_string($con, $src['D001E_Imagem_10_Height']) . "',
+                    '" . \mysqli_real_escape_string($con, $src['D001E_EAN']) . "','" . \mysqli_real_escape_string($con, $src['D001E_garantia']) . "','" . \mysqli_real_escape_string($con, $src['D001E_peso']) . "','" . \mysqli_real_escape_string($con, $src['D001E_altura']) . "','" . \mysqli_real_escape_string($con, $src['D001E_largura']) . "','" . \mysqli_real_escape_string($con, $src['D001E_comprimento']) . "', NOW(), '$tipo', '$obs', '$tags'";
+                    
                     if(\mysqli_query($con, "INSERT INTO D001F ($cols) VALUES ($vals)")) $count++;
                 }
             }
@@ -561,11 +690,9 @@ if ($isAjax) {
         echo json_encode(['ok' => 1, 'msg' => "$count produtos enviados ($tipo)."]); exit;
     }
 
-    // --- EXPORT CSV (CORRIGIDO MYSQLI) ---
-// --- EXPORT CSV (CORRIGIDO MYSQLI) ---
-        if (isset($_POST['action']) && $_POST['action'] === 'export_csv_mel') {
-            // ALTERAÇÃO: Adicionado OR para Flag_Publicar entre parenteses
-            $where = ["(T1.D001E_Flag_Ecommerce = 'S' OR T1.D001E_Flag_Publicar = 'S')"];
+// --- EXPORT CSV ---
+    if (isset($_POST['action']) && $_POST['action'] === 'export_csv_mel') {
+        $where = ["(T1.D001E_Flag_Ecommerce = 'S' OR T1.D001E_Flag_Publicar = 'S')"];
         if (!empty($_POST['f_tit'])) { $w = getSmartWhereMel("T1.D001E_Sku_Titulo", $_POST['f_tit'], 'text'); if($w) $where[] = $w; }
         if (!empty($_POST['f_sco'])) { $w = getSmartWhereMel("T1.D001E_Status_Pontuacao", $_POST['f_sco'], 'number'); if($w) $where[] = $w; }
         
@@ -580,7 +707,7 @@ if ($isAjax) {
         fclose($out); exit;
     }
 
-    // --- DETALHES VISUALIZADOR (CORRIGIDO MYSQLI) ---
+    // --- DETALHES VISUALIZADOR ---
     if (isset($_POST['action']) && $_POST['action'] === 'get_details_mel') {
         $skuBusca = isset($_POST['sku']) ? \mysqli_real_escape_string($con, $_POST['sku']) : '';
         $sqlDet = "SELECT T1.* FROM D001E AS T1 WHERE T1.D001E_D001_Codigo_Produto = '$skuBusca' LIMIT 1";
@@ -595,9 +722,8 @@ if ($isAjax) {
         exit;
     }
 
-    // --- GRID PRINCIPAL (CORRIGIDO MYSQLI) ---
+    // --- GRID PRINCIPAL ---
     header('Content-Type: application/json; charset=UTF-8');
-    // ALTERAÇÃO: Adicionado OR para Flag_Publicar entre parenteses
     $where = ["(T1.D001E_Flag_Ecommerce = 'S' OR T1.D001E_Flag_Publicar = 'S')"];
     if (!empty($_POST['f_tit'])) { $w = getSmartWhereMel("T1.D001E_Sku_Titulo", $_POST['f_tit'], 'text'); if($w) $where[] = $w; }
     if (!empty($_POST['f_id_any'])) { $w = getSmartWhereMel("T1.D001E_Id_Any", $_POST['f_id_any'], 'number'); if($w) $where[] = $w; }
@@ -639,7 +765,6 @@ $style = <<<STYLE
         --primary: #0098D3; 
     }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background-color: var(--bg-body); margin: 0; padding: 20px; color: var(--text-color); }
- /*    .quality-list { max-width: 1600px; margin: 0 auto; margin-top: 20px; } */
     .filter-container { background: #fff; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 16px; margin: 0px auto 0px auto; border: 1px solid #e5e7eb; }
     .filter-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
     .filter-title { font-size: 14px; font-weight: 700; color: #374151; display:flex; align-items:center; gap:8px; text-transform:uppercase; letter-spacing:0.05em; }
@@ -666,7 +791,7 @@ $style = <<<STYLE
     .f-btn-sync,
     .f-btn-sync_mel {
         color: #474747 !important; 
-        background: #f3f3f3 !important;    
+        background: #f3f3f3 !important;     
         border-color: #4747470d !important; 
         width: 40px !important;
         height: 40px !important;
@@ -677,50 +802,16 @@ $style = <<<STYLE
         align-items: center !important;
         justify-content: center !important;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) !important;
-        transition: all 0.2s ease !important; /* Transição suave para todos */
+        transition: all 0.2s ease !important;
     }
 
-
-    .f-btn-apply:hover {
-        background: #eaf9ff !important;
-        border-color: var(--primary) !important;
-        color: var(--primary) !important;
-    }
-
-    .f-btn-clear:hover, 
-    .f-btn-export_can:hover {
-        background: #ffd5d5 !important;
-        border-color: #ef4444 !important;
-        color: #ef4444 !important;
-    }
-
-    .f-btn-export:hover, 
-    .f-btn-send_env:hover {
-        background: #e6fff7 !important;
-        border-color: #10b981 !important;
-        color: #10b981 !important;
-    }
-
-
-    .f-btn-send:hover {
-        background: #e1dfff !important;
-        border-color: #6366f1 !important;
-        color: #6366f1 !important;
-    }
-
-
-    .f-btn-sync:hover {
-        background: #ffeedb!important;
-        border-color: #f59e0b !important;
-        color: #f59e0b !important;
-    }
-
-
-    .f-btn-sync_mel:hover {
-        background: #ededed !important;
-        border-color: #52606f !important;
-        color: #52606f !important;
-    }
+    .f-btn-apply:hover { background: #eaf9ff !important; border-color: var(--primary) !important; color: var(--primary) !important; }
+    .f-btn-clear:hover, .f-btn-export_can:hover { background: #ffd5d5 !important; border-color: #ef4444 !important; color: #ef4444 !important; }
+    .f-btn-export:hover, .f-btn-send_env:hover { background: #e6fff7 !important; border-color: #10b981 !important; color: #10b981 !important; }
+    .f-btn-send:hover { background: #e1dfff !important; border-color: #6366f1 !important; color: #6366f1 !important; }
+    .f-btn-sync:hover { background: #ffeedb!important; border-color: #f59e0b !important; color: #f59e0b !important; }
+    .f-btn-sync_mel:hover { background: #ededed !important; border-color: #52606f !important; color: #52606f !important; }
+    
     .quality-header-mel, .quality-row-mel { display: grid; grid-template-columns: 30px 70px minmax(200px, 1.4fr) 1fr 1.2fr 0.8fr 45px 45px 45px 45px 70px 100px; gap: 12px; align-items: center; margin-bottom: 5px;}
     .quality-header-mel { position: sticky; top: 0; z-index: 50; background: #f9fafb; border-bottom: 2px solid #e5e7eb; padding: 12px 16px; font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.03em; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     .quality-header-mel > div { display: flex; align-items: center; justify-content: center; text-align: center; }
@@ -805,7 +896,8 @@ $style = <<<STYLE
     .tag-check-item:hover { background:#f9fafb; border-color:#d1d5db; }
     .tag-check-item input { width:16px; height:16px; cursor:pointer; accent-color:var(--primary); }
     .res-dash-cards { display:flex; gap:15px; margin-bottom:20px; }
-    .res-card { flex:1; background:#f9fafb; border:1px solid #e5e7eb; padding:15px; border-radius:8px; text-align:center; }
+    .res-card { flex:1; background:#f9fafb; border:1px solid #e5e7eb; padding:15px; border-radius:8px; text-align:center; transition:0.2s; }
+    .res-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.05); border-color:#0098D3; cursor: pointer; }
     .res-card-val { font-size:24px; font-weight:800; color:var(--primary); }
     .res-card-lbl { font-size:11px; color:#6b7280; text-transform:uppercase; font-weight:600; margin-top:5px; }
     .res-table-wrap { flex:1; overflow-y:auto; border:1px solid #e5e7eb; border-radius:8px; }
@@ -813,7 +905,7 @@ $style = <<<STYLE
     .res-table th { background:#f3f4f6; text-align:left; padding:10px; font-weight:700; color:#374151; position:sticky; top:0; }
     .res-table td { padding:8px 10px; border-bottom:1px solid #f3f4f6; color:#4b5563; }
     .st-badge { padding:2px 8px; border-radius:12px; font-size:10px; font-weight:700; color:#fff; }
-    .st-ok { background:#10b981; } .st-err { background:#ef4444; }
+    .st-ok { background:#10b981; } .st-err { background:#ef4444; } .st-warn { background:#f59e0b; }
     .header-tooltip-content { padding: 10px; }
     .header-tooltip-title { font-weight: 700; color: var(--primary); border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; }
     .header-rule-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px; color: #4b5563; }
@@ -977,6 +1069,31 @@ echo "<div id='demoMel'></div></div>";
     </div>
 </div>
 
+<div id="modalDetailsSyncMel" class="modal-overlay" style="z-index: 10001;" onclick="if(event.target==this) fecharDetailsSyncMel()">
+    <div class="modal-content" style="max-width: 600px; height: 80%; flex-direction: column; padding: 25px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e5e7eb; padding-bottom:10px;">
+             <h2 style="font-size:16px; font-weight:700; color:#111827; margin:0;" id="titleDetailsMel">Detalhes</h2>
+             <span class="close-modal" onclick="fecharDetailsSyncMel()">×</span>
+        </div>
+        <div class="res-table-wrap" style="margin-top:15px; flex:1;">
+            <table class="res-table">
+                <thead>
+                    <tr>
+                        <th style="width:120px">SKU</th>
+                        <th>Detalhe / ID Any</th>
+                        <th style="width:80px">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="bodyDetailsMel">
+                    </tbody>
+            </table>
+        </div>
+        <div style="text-align:right; margin-top:10px;">
+            <button class="f-btn-export_can" onclick="fecharDetailsSyncMel()">Fechar</button>
+        </div>
+    </div>
+</div>
+
 <div id="modalProgressSyncMel" class="modal-overlay">
     <div class="modal-content" style="max-width: 700px; height: auto; flex-direction: column; padding: 25px;">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e5e7eb; padding-bottom:10px;">
@@ -987,17 +1104,17 @@ echo "<div id='demoMel'></div></div>";
              <span class="close-modal" id="btnCloseSyncMel" onclick="fecharProgressSyncMel()" style="display:none;">×</span>
         </div>
         <div class="res-dash-cards" id="summarySyncMel" style="display:none; margin-top:15px;">
-            <div class="res-card">
+            <div class="res-card" onclick="abrirDetalhesSyncMel('flags')" title="Ver Lista">
                 <div class="res-card-val" id="valFlagsMel">0</div>
-                <div class="res-card-lbl">Flags Corrigidas</div>
+                <div class="res-card-lbl">Flags Corrigidas <i class="material-icons" style="font-size:12px">visibility</i></div>
             </div>
-            <div class="res-card">
+            <div class="res-card" onclick="abrirDetalhesSyncMel('novos')" title="Ver Lista">
                 <div class="res-card-val" id="valNovosMel">0</div>
-                <div class="res-card-lbl">Novos Inseridos</div>
+                <div class="res-card-lbl">Novos Inseridos <i class="material-icons" style="font-size:12px">visibility</i></div>
             </div>
-            <div class="res-card">
+            <div class="res-card" onclick="abrirDetalhesSyncMel('api')" title="Ver Lista">
                 <div class="res-card-val" id="valApiMel">0</div>
-                <div class="res-card-lbl">Processados API</div>
+                <div class="res-card-lbl">Processados API <i class="material-icons" style="font-size:12px">visibility</i></div>
             </div>
         </div>
         <div class="console-box" id="consoleLogMel"></div>
@@ -1047,7 +1164,7 @@ echo "<div id='demoMel'></div></div>";
     // --- [NOVAS] FUNÇÕES AUXILIARES DE MODAL ---
     function customAlertMel(titulo, msg) {
         document.getElementById('alertTitleMel').innerText = titulo || 'Atenção';
-        document.getElementById('alertMsgMel').innerHTML = msg; // Permite HTML simples
+        document.getElementById('alertMsgMel').innerHTML = msg; 
         document.getElementById('modalAlertMel').style.display = 'flex';
     }
 
@@ -1055,9 +1172,7 @@ echo "<div id='demoMel'></div></div>";
         document.getElementById('confirmTitleMel').innerText = titulo || 'Confirmação';
         document.getElementById('confirmMsgMel').innerText = msg;
         
-        // Define o que o botão "Sim" faz
         var btn = document.getElementById('btnConfirmActionMel');
-        // Remove listeners antigos para evitar duplicação (clone hack)
         var newBtn = btn.cloneNode(true);
         btn.parentNode.replaceChild(newBtn, btn);
         
@@ -1099,9 +1214,7 @@ echo "<div id='demoMel'></div></div>";
     };
     
     var appMel = {
-        // [NOVO] Chave única para o localStorage
         cacheKey: 'hardness_mel_filters_v1',
-
         getFilters: function() {
             return {
                 f_tit: jQuery('#f_tit_mel').val(), f_id_any: jQuery('#f_id_any_mel').val(), f_sku: jQuery('#f_sku_mel').val(),
@@ -1112,14 +1225,10 @@ echo "<div id='demoMel'></div></div>";
                 f_sc_img: jQuery('#f_sc_img_mel').val(), f_sc_spec: jQuery('#f_sc_spec_mel').val()
             };
         },
-        
-        // [NOVO] Salva os filtros no navegador
         saveState: function() {
             var filters = this.getFilters();
             localStorage.setItem(this.cacheKey, JSON.stringify(filters));
         },
-
-        // [NOVO] Carrega os filtros do navegador e preenche os inputs
         loadState: function() {
             var saved = localStorage.getItem(this.cacheKey);
             if (!saved) return false;
@@ -1128,7 +1237,6 @@ echo "<div id='demoMel'></div></div>";
                 var hasValue = false;
                 for (var key in filters) {
                     if (filters.hasOwnProperty(key)) {
-                        // Mapeia a chave do filtro para o ID do input (ex: f_tit -> #f_tit_mel)
                         var inputId = '#' + key + '_mel';
                         var val = filters[key];
                         if (jQuery(inputId).length) {
@@ -1137,15 +1245,12 @@ echo "<div id='demoMel'></div></div>";
                         }
                     }
                 }
-                return hasValue; // Retorna true se carregou algum filtro
+                return hasValue; 
             } catch (e) { console.error('Erro ao carregar cache Mel', e); return false; }
         },
-
-        // [NOVO] Limpa o cache
         clearState: function() {
             localStorage.removeItem(this.cacheKey);
         },
-
         loadData: function(p) {
             var pageSizeVal = jQuery('#hardness_pageSize_mel').val();
             var urlVal      = jQuery('#hardness_ajaxUrl_mel').val();
@@ -1165,12 +1270,12 @@ echo "<div id='demoMel'></div></div>";
     };
     
     function applyFiltersMel() { 
-        appMel.saveState(); // [NOVO] Salva ao aplicar
+        appMel.saveState(); 
         appMel.loadData(1); 
     }
     
     function clearFiltersMel() { 
-        appMel.clearState(); // [NOVO] Limpa o cache
+        appMel.clearState(); 
         jQuery('#filterBodyMel input').val(''); 
         jQuery('#filterBodyMel select').val(''); 
     }
@@ -1186,7 +1291,7 @@ echo "<div id='demoMel'></div></div>";
     function fecharModalTipoMel() { document.getElementById('modalTipoEnvioMel').style.display = 'none'; }
     function cancelarEnvioMel() { document.getElementById('modalTipoEnvioMel').style.display = 'none'; document.getElementById('modalObsCorrecaoMel').style.display = 'none'; idsPendingMel = []; jQuery('#txtObsCorrecao').text(''); jQuery('.chk-tag-obs').prop('checked', false); updateCharCounterMel(document.getElementById('txtObsCorrecao')); }
     function enviarCorrecaoSingleMel(id) { idsPendingMel = [id]; document.getElementById('modalTipoEnvioMel').style.display = 'flex'; }
-    // 1. Envio em Massa para Correção
+    
     function enviarCorrecaoMassaMel() { 
         var ids = []; 
         jQuery('.row-check:checked').each(function() { ids.push(jQuery(this).val()); }); 
@@ -1221,7 +1326,7 @@ echo "<div id='demoMel'></div></div>";
         document.getElementById('modalObsCorrecaoMel').style.display = 'none'; 
     }
 
-function enviarAjaxCorrecaoMel(ids, tipo, obs, tags) {
+    function enviarAjaxCorrecaoMel(ids, tipo, obs, tags) {
         var url = jQuery('#hardness_ajaxUrl_mel').val(); 
         var sysIdVal = jQuery('#sys_base_divId_mel').val(); 
         var sysRootVal = jQuery('#sys_base_divRoot_mel').val();
@@ -1232,7 +1337,6 @@ function enviarAjaxCorrecaoMel(ids, tipo, obs, tags) {
             url: url, type: 'POST', dataType: 'json', 
             data: { ajax: 1, action: 'send_correction_mel', ids: ids, tipo: tipo, obs: obs, tags: tags, sys_divRoot: sysRootVal, sys_divId: sysIdVal }, 
             success: function(res) { 
-                // AQUI MUDOU: Usa o modal customizado
                 customAlertMel('Sucesso', res.msg || 'Processado com sucesso.'); 
                 
                 jQuery('.row-check').prop('checked', false); 
@@ -1253,12 +1357,11 @@ function enviarAjaxCorrecaoMel(ids, tipo, obs, tags) {
     const mVisMel = document.getElementById('modalVisMel'), vThumbsMel = document.getElementById('visThumbsMel'), vHeroMel = document.getElementById('visHeroMel'), vTitleMel = document.getElementById('visTitleMel'), vSkuMel = document.getElementById('visSkuMel'), vBrandMel = document.getElementById('visBrandMel'), vDescMel = document.getElementById('visDescMel'), vSpecsMel = document.getElementById('visSpecsContentMel');
     const elTSMel = document.getElementById('visTitleScoreMel'), elDSMel = document.getElementById('visDescScoreMel'), elISMel = document.getElementById('visImgScoreMel'), elASMel = document.getElementById('visAttrScoreMel');
     function getMetaNotaMel(n) { n = Number(n); if (n === 6) return { c: '#0098D3', t: 'Ótima' }; if (n === 5) return { c: '#10b981', t: 'Muito Boa' }; if (n === 4) return { c: '#84cc16', t: 'Boa' }; if (n === 3) return { c: '#eab308', t: 'Média' }; if (n === 2) return { c: '#fca5a5', t: 'Ruim' }; return { c: '#ef4444', t: 'Muito Ruim' }; }
-function abrirVisualizadorMel(sku) {
+    function abrirVisualizadorMel(sku) {
         var url = document.getElementById('hardness_ajaxUrl_mel').value;
         var sysIdVal = document.getElementById('sys_base_divId_mel').value;
         var sysRootVal = document.getElementById('sys_base_divRoot_mel').value;
 
-        // Mostra loading se o ID do sistema existir
         if (sysIdVal && typeof jQuery !== 'undefined' && jQuery('#' + sysIdVal).length) {
             jQuery('#' + sysIdVal).showLoading();
         }
@@ -1276,78 +1379,48 @@ function abrirVisualizadorMel(sku) {
             },
             success: function (res) {
                 if (res.ok) {
-                    // 1. Preenchimento dos Textos Básicos
                     vTitleMel.innerText = res.titulo;
                     vSkuMel.innerText = res.sku;
                     vBrandMel.innerText = res.marca;
                     vDescMel.innerHTML = res.desc ? res.desc : '<em>Sem descrição.</em>';
 
-                    // 2. Cores e Notas (Scores) - Título
                     const mT = getMetaNotaMel(res.scores.tit);
-                    elTSMel.style.backgroundColor = mT.c;
-                    elTSMel.innerText = res.scores.tit + ' - ' + mT.t;
+                    elTSMel.style.backgroundColor = mT.c; elTSMel.innerText = res.scores.tit + ' - ' + mT.t;
 
-                    // Descrição
                     const mD = getMetaNotaMel(res.scores.desc);
-                    elDSMel.style.backgroundColor = mD.c;
-                    elDSMel.innerText = res.scores.desc + ' - ' + mD.t;
+                    elDSMel.style.backgroundColor = mD.c; elDSMel.innerText = res.scores.desc + ' - ' + mD.t;
 
-                    // Imagens
                     const mI = getMetaNotaMel(res.scores.img);
-                    elISMel.style.backgroundColor = mI.c;
-                    elISMel.innerText = 'Fotos: ' + res.scores.img + ' (' + mI.t + ')';
+                    elISMel.style.backgroundColor = mI.c; elISMel.innerText = 'Fotos: ' + res.scores.img + ' (' + mI.t + ')';
 
-                    // Atributos
                     const mA = getMetaNotaMel(res.scores.attr);
-                    elASMel.style.backgroundColor = mA.c;
-                    elASMel.innerText = res.scores.attr + ' - ' + mA.t;
+                    elASMel.style.backgroundColor = mA.c; elASMel.innerText = res.scores.attr + ' - ' + mA.t;
 
-                    // 3. Galeria de Imagens (Thumbs e Hero)
                     vThumbsMel.innerHTML = '';
-                    if (res.imgs.length > 0) {
-                        vHeroMel.src = res.imgs[0];
-                    } else {
-                        vHeroMel.src = ''; // Limpa se não tiver imagem ou põe placeholder
-                    }
+                    if (res.imgs.length > 0) { vHeroMel.src = res.imgs[0]; } else { vHeroMel.src = ''; }
 
                     res.imgs.forEach((url, idx) => {
-                        let img = document.createElement('img');
-                        img.src = url;
-                        img.className = 'vis-mini';
-                        if (idx === 0) img.classList.add('active');
-
-                        // Lógica de clique na miniatura
-                        img.onclick = () => {
-                            vHeroMel.src = url;
-                            document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active'));
-                            img.classList.add('active');
-                        };
+                        let img = document.createElement('img'); img.src = url; img.className = 'vis-mini'; if (idx === 0) img.classList.add('active');
+                        img.onclick = () => { vHeroMel.src = url; document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active')); img.classList.add('active'); };
                         vThumbsMel.appendChild(img);
                     });
 
-                    // 4. Tabela de Especificações Dinâmica
-                    let h = '<table class="vis-specs-table">';
-                    let has = false;
-                    
+                    let h = '<table class="vis-specs-table">'; let has = false;
                     if (res.specs.EAN) { h += `<tr><td><strong>EAN:</strong> ${res.specs.EAN}</td></tr>`; has = true; }
                     if (res.specs.Garantia) { h += `<tr><td><strong>Garantia:</strong> ${res.specs.Garantia}</td></tr>`; has = true; }
                     if (res.specs.Peso) { h += `<tr><td><strong>Peso:</strong> ${res.specs.Peso}</td></tr>`; has = true; }
                     if (res.specs.Altura) { h += `<tr><td><strong>Altura:</strong> ${res.specs.Altura}</td></tr>`; has = true; }
                     if (res.specs.Largura) { h += `<tr><td><strong>Largura:</strong> ${res.specs.Largura}</td></tr>`; has = true; }
                     if (res.specs.Comprimento) { h += `<tr><td><strong>Comp.:</strong> ${res.specs.Comprimento}</td></tr>`; has = true; }
-                    
                     h += '</table>';
                     vSpecsMel.innerHTML = has ? h : '<div style="color:#999;font-size:12px">Vazio</div>';
 
-                    // 5. Exibe o Modal
                     mVisMel.style.display = 'flex';
                 } else {
-                    // Erro tratado com Modal Customizado
                     customAlertMel('Erro', res.msg || 'Erro ao carregar produto.');
                 }
             },
             error: function () {
-                // Erro de Ajax tratado com Modal Customizado
                 customAlertMel('Erro', 'Erro na comunicação.');
             },
             complete: function () {
@@ -1363,7 +1436,6 @@ function abrirVisualizadorMel(sku) {
     function openSyncModalMel() { document.getElementById('modalConfirmSyncMel').style.display = 'flex'; }
     function fecharSyncModalMel() { document.getElementById('modalConfirmSyncMel').style.display = 'none'; }
     
-    // --- FUNÇÕES DE LOG DO CONSOLE ---
     function addConsoleLog(msg, type = 'info') {
         const box = document.getElementById('consoleLogMel');
         const time = new Date().toLocaleTimeString();
@@ -1381,6 +1453,61 @@ function abrirVisualizadorMel(sku) {
         applyFiltersMel();
     }
 
+    // Variável para armazenar o último resultado do sync
+    var lastSyncDataMel = null;
+
+    // Função para abrir o modal de detalhes
+    function abrirDetalhesSyncMel(tipo) {
+        if (!lastSyncDataMel) return;
+        
+        var titulo = "";
+        var dados = [];
+        var html = "";
+
+        if (tipo === 'flags') {
+            titulo = "Flags Corrigidas";
+            dados = lastSyncDataMel.lists.flags || [];
+            dados.forEach(function(item) {
+                html += `<tr><td>${item.sku}</td><td>${item.msg}</td><td><span class="st-badge st-ok">Corrigido</span></td></tr>`;
+            });
+        } 
+        else if (tipo === 'novos') {
+            titulo = "Novos Inseridos (Fila)";
+            dados = lastSyncDataMel.lists.novos || [];
+            dados.forEach(function(item) {
+                html += `<tr><td>${item.sku}</td><td>Inclusão inicial</td><td><span class="st-badge st-ok">Novo</span></td></tr>`;
+            });
+        } 
+        else if (tipo === 'api') {
+            titulo = "Processados na API (Tentativas)";
+            dados = lastSyncDataMel.details || [];
+            dados.forEach(function(item) {
+                var stClass = item.status === 'Sucesso' ? 'st-ok' : (item.status === 'Skipped' ? 'st-warn' : 'st-err');
+                var stLabel = item.status;
+                if(item.status === 'Skipped') { stClass = 'st-err'; stLabel = 'Vazio/Pulo'; } // Visualmente vermelho se pulou
+
+                html += `<tr>
+                    <td>${item.sku}</td>
+                    <td>${item.idAny} <br> <span style="font-size:10px;color:#999">${item.msg}</span></td>
+                    <td><span class="st-badge ${stClass}">${stLabel}</span></td>
+                </tr>`;
+            });
+        }
+
+        if (dados.length === 0) {
+            html = "<tr><td colspan='3' style='text-align:center; padding:20px;'>Nenhum registro nesta categoria.</td></tr>";
+        }
+
+        document.getElementById('titleDetailsMel').innerText = titulo;
+        document.getElementById('bodyDetailsMel').innerHTML = html;
+        document.getElementById('modalDetailsSyncMel').style.display = 'flex';
+    }
+
+    function fecharDetailsSyncMel() {
+        document.getElementById('modalDetailsSyncMel').style.display = 'none';
+    }
+
+    // --- ATUALIZAÇÃO DA FUNÇÃO EXECUTAR SYNC FULL ---
     function executarSyncFullMel() {
         fecharSyncModalMel();
         const mProg = document.getElementById('modalProgressSyncMel');
@@ -1389,74 +1516,69 @@ function abrirVisualizadorMel(sku) {
         mProg.style.display = 'flex';
         document.getElementById('spinnerSyncMel').style.display = 'block';
         document.getElementById('titleSyncMel').innerText = 'Sincronizando... Aguarde.';
-        document.getElementById('titleSyncMel').style.color = '#111827';
         document.getElementById('summarySyncMel').style.display = 'none';
+        
+        // Reset dos botões
         document.getElementById('btnCloseSyncMel').style.display = 'none';
         document.getElementById('btnDoneSyncMel').style.display = 'none';
+        
         mLog.innerHTML = '';
+        addConsoleLog("Iniciando processo...", "info");
 
-        addConsoleLog("Iniciando processo de sincronização em massa...", "info");
-        addConsoleLog("Conectando ao banco de dados...", "info");
-        setTimeout(() => { addConsoleLog("Verificando Flags de E-commerce e Novos Produtos...", "warn"); }, 500);
-        setTimeout(() => { addConsoleLog("Consultando API AnyMarket (Isso pode levar alguns minutos)...", "warn"); }, 1500);
-
-        var url = jQuery('#hardness_ajaxUrl_mel').val(); var sysIdVal = jQuery('#sys_base_divId_mel').val(); var sysRootVal = jQuery('#sys_base_divRoot_mel').val();
+        var url = jQuery('#hardness_ajaxUrl_mel').val(); 
+        var sysIdVal = jQuery('#sys_base_divId_mel').val(); 
+        var sysRootVal = jQuery('#sys_base_divRoot_mel').val();
 
         jQuery.ajax({
             url: url, type: 'POST', dataType: 'json',
             data: { ajax: 1, action: 'sync_auto_full_mel', sys_divRoot: sysRootVal, sys_divId: sysIdVal },
             success: function(res) {
                 if (res.ok) {
-                    addConsoleLog("Resposta do servidor recebida com sucesso.", "success");
-                    addConsoleLog("--------------------------------------------------", "info");
+                    // [NOVO] Guardamos o resultado globalmente
+                    lastSyncDataMel = res;
+
+                    addConsoleLog("Processo finalizado.", "success");
+                    
+                    // Preenche números
                     jQuery('#valFlagsMel').text(res.summary.flags);
                     jQuery('#valNovosMel').text(res.summary.novos);
                     
                     let successCount = 0;
-                    if (res.details && res.details.length > 0) {
+                    if (res.details) {
                         res.details.forEach(function(item) {
                             if (item.status === 'Sucesso') {
-                                addConsoleLog(`[OK] SKU: ${item.sku} -> ID Any: ${item.idAny} (Atualizado)`, "success");
                                 successCount++;
+                                addConsoleLog(`[OK] ${item.sku}`, "success");
+                            } else if (item.status === 'Skipped') {
+                                addConsoleLog(`[PULO] ${item.sku} (Sem dados)`, "warn");
                             } else {
-                                addConsoleLog(`[ERRO] SKU: ${item.sku} -> ${item.msg}`, "error");
+                                addConsoleLog(`[ERRO] ${item.sku}: ${item.msg}`, "error");
                             }
                         });
-                        addConsoleLog("--------------------------------------------------", "info");
-                        addConsoleLog(`Processamento finalizado. ${successCount} itens atualizados via API.`, "info");
-                    } else {
-                        addConsoleLog("Nenhum item pendente de atualização na API (Fila vazia ou limite atingido).", "warn");
                     }
                     jQuery('#valApiMel').text(successCount);
+
+                    // UI Final
                     document.getElementById('spinnerSyncMel').style.display = 'none';
                     document.getElementById('titleSyncMel').innerText = 'Processo Finalizado';
-                    document.getElementById('titleSyncMel').style.color = '#10b981';
                     document.getElementById('summarySyncMel').style.display = 'flex';
                 } else {
-                    addConsoleLog("ERRO RETORNADO PELO SERVIDOR:", "error");
-                    addConsoleLog(res.msg || 'Erro desconhecido', "error");
+                    addConsoleLog("Erro: " + res.msg, "error");
                     document.getElementById('spinnerSyncMel').style.display = 'none';
-                    document.getElementById('titleSyncMel').innerText = 'Erro na Execução';
-                    document.getElementById('titleSyncMel').style.color = '#ef4444';
                 }
             },
-            error: function(xhr, status, error) {
-                addConsoleLog("FALHA DE COMUNICAÇÃO AJAX", "error");
-                addConsoleLog(`Status: ${status} | Erro: ${error}`, "error");
+            error: function() { 
+                addConsoleLog("Erro Fatal de Conexão", "error"); 
                 document.getElementById('spinnerSyncMel').style.display = 'none';
-                document.getElementById('titleSyncMel').innerText = 'Falha Crítica';
-                document.getElementById('titleSyncMel').style.color = '#ef4444';
             },
             complete: function() {
                 document.getElementById('btnCloseSyncMel').style.display = 'block';
                 document.getElementById('btnDoneSyncMel').style.display = 'block';
-                addConsoleLog("Pode fechar esta janela.", "info");
             }
         });
     }
 
-function syncAnyMarketItemMel(id) {
-        // AQUI MUDOU: Chama o customConfirmMel e passa a lógica como callback
+    function syncAnyMarketItemMel(id) {
         customConfirmMel(
             'Atualizar Item', 
             'Deseja buscar os dados mais recentes deste item na AnyMarket? Isso irá sobrepor os dados atuais.',
@@ -1472,10 +1594,10 @@ function syncAnyMarketItemMel(id) {
                     data: { ajax: 1, action: 'sync_anymarket_item_mel', id: id, sys_divRoot: sysRoot, sys_divId: sysId },
                     success: function(res) { 
                         if (res.ok) { 
-                            customAlertMel('Sincronizado', res.msg); // Alert Customizado
+                            customAlertMel('Sincronizado', res.msg); 
                             appMel.loadData(1); 
                         } else { 
-                            customAlertMel('Erro', res.msg); // Alert Customizado
+                            customAlertMel('Erro', res.msg); 
                         } 
                     },
                     error: function() { customAlertMel('Erro', 'Falha na comunicação com o servidor.'); },
@@ -1485,7 +1607,7 @@ function syncAnyMarketItemMel(id) {
         );
     }
 
-function syncAnyMarketMassaMel() {
+    function syncAnyMarketMassaMel() {
         var checked = jQuery('.row-check:checked');
         
         if (checked.length === 0) { 
@@ -1498,7 +1620,6 @@ function syncAnyMarketMassaMel() {
             return; 
         }
         
-        // AQUI MUDOU: Chama o customConfirmMel
         customConfirmMel(
             'Sincronizar em Massa',
             'Deseja sincronizar os ' + checked.length + ' itens selecionados com a AnyMarket?',
@@ -1530,7 +1651,6 @@ function syncAnyMarketMassaMel() {
         );
     }
 
-    // [NOVO] Inicialização: Tenta carregar cache ao iniciar o script
     jQuery(document).ready(function() {
         if (appMel.loadState()) {
             appMel.loadData(1);
