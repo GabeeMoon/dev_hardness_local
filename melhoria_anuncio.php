@@ -1,7 +1,7 @@
 <?php
 /*
- PAINEL DE MELHORIA DE ANUNCIO (D001E) - QUALITY SCORE 3.2
- ATUALIZADO: CAPTURA DE DIMENSÕES DE IMAGEM (WIDTH/HEIGHT)
+ PAINEL DE MELHORIA DE ANUNCIO (D001E) - QUALITY SCORE 3.5
+ ATUALIZADO: CORREÇÃO DE FILTROS (ZERO E TEXTO) + NOVA MÉTRICA DIMENSÕES
  */
 namespace hardness;
 
@@ -89,6 +89,63 @@ if (!function_exists('analiseImagensMel')) {
     }
 }
 
+// --- FUNÇÃO DE ANÁLISE DE DIMENSÕES ---
+if (!function_exists('analiseDimensoesMel')) {
+    function analiseDimensoesMel($row) {
+        $detalhes = [];
+        $qtdImagens = 0;
+        $quadradas = 0;
+        $minimo1200 = true;
+        $algumaMuitoGrande = false;
+        $todas1200Exact = true;
+        $todas1000Exact = true;
+
+        for ($i = 1; $i <= 10; $i++) {
+            $w = (int)$row["D001E_Imagem_{$i}_width"];
+            $h = (int)$row["D001E_Imagem_{$i}_Height"];
+            
+            if ($w > 0 && $h > 0) {
+                $qtdImagens++;
+                $isQuadrada = ($w === $h);
+                if ($isQuadrada) $quadradas++;
+                
+                if ($w < 1200 || $h < 1200) $minimo1200 = false;
+                if ($w > 2400 || $h > 2400) $algumaMuitoGrande = true;
+                if ($w !== 1200 || $h !== 1200) $todas1200Exact = false;
+                if ($w !== 1000 || $h !== 1000) $todas1000Exact = false;
+
+                $detalhes[] = "Img $i: {$w}x{$h} " . ($isQuadrada ? "✅" : "❌");
+            }
+        }
+
+        if ($qtdImagens === 0) return ['nota' => 0, 'valor' => 'Sem dimensões', 'regra' => 'Nenhuma imagem encontrada', 'peso' => 2, 'detalhes' => $detalhes];
+
+        $n = 0; 
+        $regra = "";
+
+        switch (true) {
+            case ($quadradas === $qtdImagens && $todas1200Exact):
+                $n = 5; $regra = "Perfeito (1200px Quadrado)"; break;
+            case ($quadradas === $qtdImagens && $algumaMuitoGrande):
+                $n = 4; $regra = "Quadrada (Excesso > 2400px)"; break;
+            case ($quadradas === $qtdImagens && $todas1000Exact):
+                $n = 3; $regra = "Padrão antigo (1000px)"; break;
+            case (($qtdImagens - $quadradas) === 1):
+                $n = 2; $regra = "Apenas 1 não é quadrado"; break;
+            case (!$minimo1200):
+                $n = 0; $regra = "Lado < 1200px"; break;
+            case ($quadradas === 0):
+                $n = 1; $regra = "Nenhuma quadrada (>1200px)"; break;
+            case (($qtdImagens - $quadradas) > 1):
+                $n = 1; $regra = "Múltiplas não quadradas"; break;
+            default:
+                $n = 3; $regra = "Quadradas diversas (>1200)"; break;
+        }
+
+        return ['nota' => $n, 'valor' => "$quadradas/$qtdImagens quadradas", 'regra' => $regra, 'peso' => 2, 'detalhes' => $detalhes];
+    }
+}
+
 if (!function_exists('analiseAtributosMel')) {
     function analiseAtributosMel($row) {
         $count = 0;
@@ -128,15 +185,33 @@ if (!function_exists('gerarTooltipHtmlMel')) {
     }
 }
 
-if (!function_exists('gerarTooltipGeralMel')) {
-    function gerarTooltipGeralMel($resT, $resD, $resI, $resA) {
-        $cT = getCorNotaMel($resT['nota']); $cD = getCorNotaMel($resD['nota']); $cI = getCorNotaMel($resI['nota']); $cA = getCorNotaMel($resA['nota']);
+if (!function_exists('gerarTooltipDimensoesMel')) {
+    function gerarTooltipDimensoesMel($arrAnalise) {
+        $htmlImgs = "";
+        foreach ($arrAnalise['detalhes'] as $info) {
+            $htmlImgs .= "<tr><td colspan='2' class='tt-row' style='font-size:10px'>$info</td></tr>";
+        }
         return "<table class='tt-table'>
-            <tr><th colspan='2' class='tt-head'>CÁLCULO (DIVISOR 10)</th></tr>
-            <tr><td class='tt-row'>Título</td><td class='tt-val' style='color:$cT'>{$resT['nota']}</td></tr>
-            <tr><td class='tt-row'>Descrição</td><td class='tt-val' style='color:$cD'>{$resD['nota']}</td></tr>
-            <tr><td class='tt-row'>Imagens</td><td class='tt-val' style='color:$cI'>{$resI['nota']}</td></tr>
-            <tr><td class='tt-row'>Atributos</td><td class='tt-val' style='color:$cA'>{$resA['nota']}</td></tr>
+            <tr><th colspan='2' class='tt-head'>ANÁLISE DIMENSÕES</th></tr>
+            $htmlImgs
+            <tr><td class='tt-row'>Regra</td><td class='tt-val'>{$arrAnalise['regra']}</td></tr>
+            <tr class='tt-foot'><td class='tt-row'>Nota Calc.</td><td class='tt-val'>{$arrAnalise['nota']}</td></tr>
+        </table>";
+    }
+}
+
+if (!function_exists('gerarTooltipGeralMel')) {
+    function gerarTooltipGeralMel($resT, $resD, $resI, $resA, $resDim) {
+        $cT = getCorNotaMel($resT['nota']); $cD = getCorNotaMel($resD['nota']); $cI = getCorNotaMel($resI['nota']); $cA = getCorNotaMel($resA['nota']);
+        $cDim = getCorNotaMel($resDim['nota']);
+        
+        return "<table class='tt-table'>
+            <tr><th colspan='2' class='tt-head'>CÁLCULO (DIVISOR 12)</th></tr>
+            <tr><td class='tt-row'>Título (x3)</td><td class='tt-val' style='color:$cT'>{$resT['nota']}</td></tr>
+            <tr><td class='tt-row'>Descrição (x3)</td><td class='tt-val' style='color:$cD'>{$resD['nota']}</td></tr>
+            <tr><td class='tt-row'>Imagens (x3)</td><td class='tt-val' style='color:$cI'>{$resI['nota']}</td></tr>
+            <tr><td class='tt-row'>Dimensões (x2)</td><td class='tt-val' style='color:$cDim'>{$resDim['nota']}</td></tr>
+            <tr><td class='tt-row'>Atributos (x1)</td><td class='tt-val' style='color:$cA'>{$resA['nota']}</td></tr>
         </table>";
     }
 }
@@ -159,9 +234,12 @@ function renderQualityRowMel($row) {
     $resD = analiseDescricaoMel($row['D001E_Descricao']);
     $resI = analiseImagensMel($row);
     $resA = analiseAtributosMel($row);
+    // [NOVO] Chamada da função corrigida e análise de dimensões
+    $resDim = analiseDimensoesMel($row); 
 
-    $soma  = ($resT['nota'] * 3) + ($resD['nota'] * 3) + ($resI['nota'] * 3) + ($resA['nota'] * 1);
-    $final = floor($soma / 10);
+    // [IMPORTANTE] Divisor 12 (Pesos: 3+3+3+1+2)
+    $soma  = ($resT['nota'] * 3) + ($resD['nota'] * 3) + ($resI['nota'] * 3) + ($resA['nota'] * 1) + ($resDim['nota'] * 2);
+    $final = floor($soma / 12);
     $final = max(1, min(5, $final));
 
     $idProd  = (int) $row['D001E_Id'];
@@ -171,6 +249,13 @@ function renderQualityRowMel($row) {
     if ($row['D001E_pont_desc'] != $resD['nota']) $sqlSets[] = "D001E_pont_desc = {$resD['nota']}";
     if ($row['D001E_pont_img'] != $resI['nota']) $sqlSets[] = "D001E_pont_img = {$resI['nota']}";
     if ($row['D001E_pont_espec'] != $resA['nota']) $sqlSets[] = "D001E_pont_espec = {$resA['nota']}";
+    
+    // [NOVO] Salva a nota de dimensão
+    if (isset($row['D001E_pont_img_dim']) && $row['D001E_pont_img_dim'] != $resDim['nota']) {
+        $sqlSets[] = "D001E_pont_img_dim = {$resDim['nota']}";
+    } elseif (!isset($row['D001E_pont_img_dim'])) {
+         $sqlSets[] = "D001E_pont_img_dim = {$resDim['nota']}";
+    }
     
     if ($updateMarca && $con) { 
         $marcaSafe = \mysqli_real_escape_string($con, $marca); 
@@ -248,6 +333,12 @@ function renderQualityRowMel($row) {
             <div class='mini-score-val' style='background:" . getCorNotaMel($resI['nota']) . "'>{$resI['nota']}</div>
             <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipHtmlMel("Imagens", $resI) . "</div>
         </div>
+        
+        <div class='mini-score-box' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>
+            <div class='mini-score-val' style='background:" . getCorNotaMel($resDim['nota']) . "'>{$resDim['nota']}</div>
+            <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipDimensoesMel($resDim) . "</div>
+        </div>
+
         <div class='mini-score-box' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>
             <div class='mini-score-val' style='background:" . getCorNotaMel($resA['nota']) . "'>{$resA['nota']}</div>
             <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipHtmlMel("Atributos", $resA) . "</div>
@@ -257,7 +348,7 @@ function renderQualityRowMel($row) {
                 <span class='score-number'>$final</span>
             </div>
             <span class='score-label' style='color:$c'>$l</span>
-            <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipGeralMel($resT, $resD, $resI, $resA) . "</div>
+            <div class='tooltip-hidden-content' style='display:none'>" . gerarTooltipGeralMel($resT, $resD, $resI, $resA, $resDim) . "</div>
         </div>
         <div class='col-actions'>
              <button class='f-btn-send-single' onclick='enviarCorrecaoSingleMel(\"$idProd\")' title='Enviar para Melhoria'><i class='material-icons'>build</i></button>
@@ -270,7 +361,6 @@ function renderQualityRowMel($row) {
 // [4. AJAX HANDLER (GERENCIADOR DE REQUISIÇÕES)]
 // =============================================================================
 if ($isAjax) {
-    // Inicialização da conexão com tratamento de erros
     if (!isset($g['conexaoBanco']) || !$g['conexaoBanco'] || !($g['conexaoBanco'] instanceof \mysqli)) {
         $con = @\mysqli_connect($confUsuario['dbHost'], $confUsuario['dbUser'], $confUsuario['dbPass'], $confUsuario['dbDatabase']);
         $g['conexaoBanco'] = $con;
@@ -303,7 +393,7 @@ if ($isAjax) {
         }
     }
 
-    // --- SYNC INDIVIDUAL E EM MASSA (ATUALIZADO COM WIDTH/HEIGHT) ---
+    // --- SYNC INDIVIDUAL E EM MASSA ---
     if (isset($_POST['action']) && ($_POST['action'] === 'sync_anymarket_item_mel' || $_POST['action'] === 'sync_anymarket_massa_mel')) {
         $ids = isset($_POST['ids']) ? $_POST['ids'] : [$_POST['id']];
         if (!is_array($ids)) $ids = explode(',', $ids);
@@ -413,7 +503,7 @@ if ($isAjax) {
         exit;
     }
 
-    // --- SYNC AUTOMÁTICO COMPLETO (ATUALIZADO COM WIDTH/HEIGHT E JOIN D001A) ---
+    // --- SYNC AUTOMÁTICO COMPLETO ---
     if (isset($_POST['action']) && $_POST['action'] === 'sync_auto_full_mel') {
         header('Content-Type: application/json; charset=UTF-8');
         set_time_limit(180); 
@@ -421,15 +511,11 @@ if ($isAjax) {
         
         if (!$con) { ob_end_clean(); echo json_encode(['ok' => 0, 'msg' => 'Sem conexao com banco (mysqli).']); exit; }
 
-        // ARRAYS PARA RELATÓRIO DETALHADO
         $listFlags = [];
         $listNovos = [];
         $details   = [];
 
-        // ---------------------------------------------------------
         // PASSO 1: UPDATE DE FLAGS
-        // ---------------------------------------------------------
-        
         $sqlCheckFlags = "SELECT e.D001E_D001_Codigo_Produto, d.D001_Flag_Ecommerce, da.D001A_Flag_Publicar 
                           FROM D001E e 
                           INNER JOIN D001 d ON e.D001E_D001_Id = d.D001_Id 
@@ -464,10 +550,7 @@ if ($isAjax) {
             $details[] = ['sku' => 'SISTEMA', 'idAny' => 'SQL', 'status' => 'Erro Update', 'msg' => \mysqli_error($con)];
         }
 
-        // ---------------------------------------------------------
         // PASSO 2: INSERÇÃO DE NOVOS
-        // ---------------------------------------------------------
-        
         $sqlCheckNovos = "SELECT d.D001_Codigo_Produto 
                           FROM D001 d 
                           LEFT JOIN D001A da ON da.D001A_D001_Id = d.D001_Id
@@ -495,9 +578,7 @@ if ($isAjax) {
             $details[] = ['sku' => 'SISTEMA', 'idAny' => 'SQL', 'status' => 'Erro Insert', 'msg' => \mysqli_error($con)];
         }
 
-        // ---------------------------------------------------------
         // PASSO 3: LOOP POPULADOR ANYMARKET
-        // ---------------------------------------------------------
         if (!class_exists('hardness\API001') && !class_exists('API001')) { $pathAPI = 'bibliotecas/classes/API001.php'; if (file_exists($pathAPI)) require_once($pathAPI); }
         if (!class_exists('hardness\GMP010') && !class_exists('GMP010')) { $pathGMP = 'bibliotecas/classes/GMP010.php'; if (file_exists($pathGMP)) require_once($pathGMP); }
 
@@ -642,7 +723,7 @@ if ($isAjax) {
         exit;
     }
 
-    // --- ENVIO PARA CORREÇÃO (ATUALIZADO COM WIDTH/HEIGHT NO INSERT) ---
+    // --- ENVIO PARA CORREÇÃO ---
     if (isset($_POST['action']) && $_POST['action'] === 'send_correction_mel') {
         $ids = isset($_POST['ids']) ? $_POST['ids'] : []; if (!is_array($ids)) $ids = explode(',', $ids);
         $tipo = isset($_POST['tipo']) ? $_POST['tipo'] : 'corr';
@@ -707,39 +788,97 @@ if ($isAjax) {
         fclose($out); exit;
     }
 
-    // --- DETALHES VISUALIZADOR ---
+// --- DETALHES VISUALIZADOR ---
     if (isset($_POST['action']) && $_POST['action'] === 'get_details_mel') {
         $skuBusca = isset($_POST['sku']) ? \mysqli_real_escape_string($con, $_POST['sku']) : '';
         $sqlDet = "SELECT T1.* FROM D001E AS T1 WHERE T1.D001E_D001_Codigo_Produto = '$skuBusca' LIMIT 1";
         $rsDet  = \mysqli_query($con, $sqlDet);
+        
         if ($rsDet && \mysqli_num_rows($rsDet) > 0) {
             $row = \mysqli_fetch_assoc($rsDet);
-            $resT = analiseTituloMel($row['D001E_Sku_Titulo']); $resD = analiseDescricaoMel($row['D001E_Descricao']); $resI = analiseImagensMel($row); $resA = analiseAtributosMel($row);
-            $imgs = []; for ($i = 1; $i <= 10; $i++) if (!empty($row["D001E_Imagem_$i"])) $imgs[] = $row["D001E_Imagem_$i"];
-            $specs = ['EAN' => $row['D001E_EAN'], 'Garantia' => $row['D001E_garantia'], 'Peso' => $row['D001E_peso'], 'Altura' => $row['D001E_altura'], 'Largura' => $row['D001E_largura'], 'Comprimento' => $row['D001E_comprimento']];
-            echo json_encode(['ok' => 1, 'titulo' => $row['D001E_Sku_Titulo'], 'sku' => $row['D001E_D001_Codigo_Produto'], 'marca' => $row['D001E_Marca'], 'desc' => $row['D001E_Descricao'], 'imgs' => $imgs, 'specs' => $specs, 'scores' => ['tit' => $resT['nota'], 'desc' => $resD['nota'], 'img' => $resI['nota'], 'attr' => $resA['nota']]]);
-        } else { echo json_encode(['ok' => 0, 'msg' => 'Produto não encontrado']); }
+            
+            // Recalcula as notas para exibir no modal
+            $resT = analiseTituloMel($row['D001E_Sku_Titulo']); 
+            $resD = analiseDescricaoMel($row['D001E_Descricao']); 
+            $resI = analiseImagensMel($row); 
+            $resA = analiseAtributosMel($row);
+            $resDim = analiseDimensoesMel($row); 
+
+            $imgs = []; 
+            $imgs_details = []; 
+
+            for ($i = 1; $i <= 10; $i++) {
+                if (!empty($row["D001E_Imagem_$i"])) {
+                    $imgs[] = $row["D001E_Imagem_$i"];
+                    $imgs_details[] = [
+                        'w' => (int)$row["D001E_Imagem_{$i}_width"],
+                        'h' => (int)$row["D001E_Imagem_{$i}_Height"]
+                    ];
+                }
+            }
+
+            $specs = [
+                'EAN' => $row['D001E_EAN'], 
+                'Garantia' => $row['D001E_garantia'], 
+                'Peso' => $row['D001E_peso'], 
+                'Altura' => $row['D001E_altura'], 
+                'Largura' => $row['D001E_largura'], 
+                'Comprimento' => $row['D001E_comprimento']
+            ];
+
+            echo json_encode([
+                'ok' => 1, 
+                'titulo' => $row['D001E_Sku_Titulo'], 
+                'sku' => $row['D001E_D001_Codigo_Produto'], 
+                'marca' => $row['D001E_Marca'], 
+                'desc' => $row['D001E_Descricao'], 
+                'imgs' => $imgs, 
+                'imgs_details' => $imgs_details, 
+                'specs' => $specs, 
+                'scores' => [
+                    'tit' => $resT['nota'], 
+                    'desc' => $resD['nota'], 
+                    'img' => $resI['nota'], 
+                    'attr' => $resA['nota'], 
+                    'dim' => $resDim['nota']
+                ]
+            ]);
+        } else { 
+            echo json_encode(['ok' => 0, 'msg' => 'Produto não encontrado']); 
+        }
         exit;
     }
 
     // --- GRID PRINCIPAL ---
     header('Content-Type: application/json; charset=UTF-8');
     $where = ["(T1.D001E_Flag_Ecommerce = 'S' OR T1.D001E_Flag_Publicar = 'S')"];
-    if (!empty($_POST['f_tit'])) { $w = getSmartWhereMel("T1.D001E_Sku_Titulo", $_POST['f_tit'], 'text'); if($w) $where[] = $w; }
-    if (!empty($_POST['f_id_any'])) { $w = getSmartWhereMel("T1.D001E_Id_Any", $_POST['f_id_any'], 'number'); if($w) $where[] = $w; }
-    if (!empty($_POST['f_sku'])) { $w = getSmartWhereMel("T1.D001E_D001_Codigo_Produto", $_POST['f_sku'], 'text'); if($w) $where[] = $w; }
-    if (!empty($_POST['f_mar'])) { $w = getSmartWhereMel("T1.D001E_Marca", $_POST['f_mar'], 'text'); if($w) $where[] = $w; }
-    if (!empty($_POST['f_desc'])) { $w = getSmartWhereMel("T1.D001E_Descricao", $_POST['f_desc'], 'text'); if($w) $where[] = $w; }
-    if (!empty($_POST['f_spec'])) { $fsp = cleanInputMel($_POST['f_spec']); $where[] = "(T1.D001E_EAN LIKE '%$fsp%' OR T1.D001E_garantia LIKE '%$fsp%' OR T1.D001E_peso LIKE '%$fsp%')"; }
+    
+    // [CORREÇÃO] Usando isset e !== '' para permitir busca por ZERO
+    if (isset($_POST['f_tit']) && $_POST['f_tit'] !== '') { $w = getSmartWhereMel("T1.D001E_Sku_Titulo", $_POST['f_tit'], 'text'); if($w) $where[] = $w; }
+    // [CORREÇÃO] ID ANY agora é TEXTO para evitar erros de conversão com IDs grandes
+    if (isset($_POST['f_id_any']) && $_POST['f_id_any'] !== '') { $w = getSmartWhereMel("T1.D001E_Id_Any", $_POST['f_id_any'], 'text'); if($w) $where[] = $w; }
+    if (isset($_POST['f_sku']) && $_POST['f_sku'] !== '') { $w = getSmartWhereMel("T1.D001E_D001_Codigo_Produto", $_POST['f_sku'], 'text'); if($w) $where[] = $w; }
+    if (isset($_POST['f_mar']) && $_POST['f_mar'] !== '') { $w = getSmartWhereMel("T1.D001E_Marca", $_POST['f_mar'], 'text'); if($w) $where[] = $w; }
+    if (isset($_POST['f_desc']) && $_POST['f_desc'] !== '') { $w = getSmartWhereMel("T1.D001E_Descricao", $_POST['f_desc'], 'text'); if($w) $where[] = $w; }
+    
+    if (isset($_POST['f_spec']) && $_POST['f_spec'] !== '') { 
+        $fsp = cleanInputMel($_POST['f_spec']); 
+        $where[] = "(T1.D001E_EAN LIKE '%$fsp%' OR T1.D001E_garantia LIKE '%$fsp%' OR T1.D001E_peso LIKE '%$fsp%')"; 
+    }
+    
     if (isset($_POST['f_est_liq']) && $_POST['f_est_liq'] !== '') { $w = getSmartWhereMel("T2.D009_Quantidade_Estoque_Liquido", $_POST['f_est_liq'], 'number'); if($w) $where[] = $w; }
     if (isset($_POST['f_est_tab']) && $_POST['f_est_tab'] !== '') { $w = getSmartWhereMel("T2.D009_Quantidade_Estoque_Tabela", $_POST['f_est_tab'], 'number'); if($w) $where[] = $w; }
-    if (!empty($_POST['f_freq'])) { $w = getSmartWhereMel("T2.D009_Frequencia_Venda", $_POST['f_freq'], 'number'); if($w) $where[] = $w; }
-    if (!empty($_POST['f_custo'])) { $w = getSmartWhereMel("T2.D009_Valor_Custo_Unitario", $_POST['f_custo'], 'number'); if($w) $where[] = $w; }
-    if (!empty($_POST['f_sco'])) { $w = getSmartWhereMel("T1.D001E_Status_Pontuacao", $_POST['f_sco'], 'number'); if($w) $where[] = $w; }
-    if (!empty($_POST['f_sc_tit'])) { $w = getSmartWhereMel("T1.D001E_pont_titulo", $_POST['f_sc_tit'], 'number'); if($w) $where[] = $w; }
-    if (!empty($_POST['f_sc_desc'])) { $w = getSmartWhereMel("T1.D001E_pont_desc", $_POST['f_sc_desc'], 'number'); if($w) $where[] = $w; }
-    if (!empty($_POST['f_sc_img'])) { $w = getSmartWhereMel("T1.D001E_pont_img", $_POST['f_sc_img'], 'number'); if($w) $where[] = $w; }
-    if (!empty($_POST['f_sc_spec'])) { $w = getSmartWhereMel("T1.D001E_pont_espec", $_POST['f_sc_spec'], 'number'); if($w) $where[] = $w; }
+    if (isset($_POST['f_freq']) && $_POST['f_freq'] !== '') { $w = getSmartWhereMel("T2.D009_Frequencia_Venda", $_POST['f_freq'], 'number'); if($w) $where[] = $w; }
+    if (isset($_POST['f_custo']) && $_POST['f_custo'] !== '') { $w = getSmartWhereMel("T2.D009_Valor_Custo_Unitario", $_POST['f_custo'], 'number'); if($w) $where[] = $w; }
+    
+    // Filtros Numéricos de Notas (CORRIGIDO PARA ACEITAR 0)
+    if (isset($_POST['f_sco']) && $_POST['f_sco'] !== '') { $w = getSmartWhereMel("T1.D001E_Status_Pontuacao", $_POST['f_sco'], 'number'); if($w) $where[] = $w; }
+    if (isset($_POST['f_sc_tit']) && $_POST['f_sc_tit'] !== '') { $w = getSmartWhereMel("T1.D001E_pont_titulo", $_POST['f_sc_tit'], 'number'); if($w) $where[] = $w; }
+    if (isset($_POST['f_sc_desc']) && $_POST['f_sc_desc'] !== '') { $w = getSmartWhereMel("T1.D001E_pont_desc", $_POST['f_sc_desc'], 'number'); if($w) $where[] = $w; }
+    if (isset($_POST['f_sc_img']) && $_POST['f_sc_img'] !== '') { $w = getSmartWhereMel("T1.D001E_pont_img", $_POST['f_sc_img'], 'number'); if($w) $where[] = $w; }
+    if (isset($_POST['f_sc_spec']) && $_POST['f_sc_spec'] !== '') { $w = getSmartWhereMel("T1.D001E_pont_espec", $_POST['f_sc_spec'], 'number'); if($w) $where[] = $w; }
+    // [NOVO] Filtro de Dimensão
+    if (isset($_POST['f_sc_dim']) && $_POST['f_sc_dim'] !== '') { $w = getSmartWhereMel("T1.D001E_pont_img_dim", $_POST['f_sc_dim'], 'number'); if($w) $where[] = $w; }
 
     $whereStr = implode(" AND ", $where);
     $totalRows = 0;
@@ -791,7 +930,7 @@ $style = <<<STYLE
     .f-btn-sync,
     .f-btn-sync_mel {
         color: #474747 !important; 
-        background: #f3f3f3 !important;     
+        background: #f3f3f3 !important;      
         border-color: #4747470d !important; 
         width: 40px !important;
         height: 40px !important;
@@ -812,7 +951,8 @@ $style = <<<STYLE
     .f-btn-sync:hover { background: #ffeedb!important; border-color: #f59e0b !important; color: #f59e0b !important; }
     .f-btn-sync_mel:hover { background: #ededed !important; border-color: #52606f !important; color: #52606f !important; }
     
-    .quality-header-mel, .quality-row-mel { display: grid; grid-template-columns: 30px 70px minmax(200px, 1.4fr) 1fr 1.2fr 0.8fr 45px 45px 45px 45px 70px 100px; gap: 12px; align-items: center; margin-bottom: 5px;}
+    .quality-header-mel, .quality-row-mel { display: grid; grid-template-columns: 30px 70px minmax(200px, 1.4fr) 1fr 1.2fr 0.8fr 45px 45px 45px 45px 45px 70px 100px; gap: 12px; align-items: center; margin-bottom: 5px;}
+    
     .quality-header-mel { position: sticky; top: 0; z-index: 50; background: #f9fafb; border-bottom: 2px solid #e5e7eb; padding: 12px 16px; font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.03em; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     .quality-header-mel > div { display: flex; align-items: center; justify-content: center; text-align: center; }
     .quality-header-mel > div:nth-child(3), .quality-header-mel > div:nth-child(5), .quality-header-mel > div:nth-child(6) { justify-content: flex-start; text-align: left; }
@@ -876,7 +1016,7 @@ $style = <<<STYLE
     .vis-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-weight: 700; font-size: 12px; color: #111827; }
     .vis-desc-box { font-size: 12px; line-height: 1.5; color: #4b5563; background: #f9fafb; padding: 10px; border-radius: 8px; border: 1px solid #e5e7eb; max-height: 150px; overflow-y: auto; }
     .vis-specs-table td { padding: 4px 0; border-bottom: 1px solid #f3f4f6; color: #4b5563; font-size: 12px; }
-    @media (max-width: 1400px) { .quality-header-mel, .quality-row-mel { grid-template-columns: 30px 60px 1.4fr 160px 1.5fr 1fr 45px 45px 45px 45px 70px 100px; gap: 8px; } }
+    @media (max-width: 1400px) { .quality-header-mel, .quality-row-mel { grid-template-columns: 30px 60px 1.4fr 160px 1.5fr 1fr 45px 45px 45px 45px 45px 70px 100px; gap: 8px; } }
     #demoMel { padding: 20px 0; display:none; flex-wrap:wrap; align-items:center; justify-content:center; gap:5px; }
     #demoMel.active { display: flex; }
     #demoMel .pg-btn { border: 1px solid #d1d5db; background:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; color:#374151; text-decoration: none; }
@@ -927,9 +1067,10 @@ STYLE;
 if (!$apiMode) echo $style;
 
 // Tooltips para Header com Regras Claras
-$tipTit  = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: TÍTULO (Peso 3)</div><div class='header-rule-row'><span>< 10 chars</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>10 a 19 chars</span><span style='color:#fca5a5'>2</span></div><div class='header-rule-row'><span>20 a 39 chars</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>40 a 49 chars</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>50 a 60 chars</span><span style='color:#10b981'>5</span></div><div class='header-rule-row'><span>> 60 chars</span><span style='color:#ef4444'>0</span></div></div>";
+$tipTit = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: TÍTULO (Peso 3)</div><div class='header-rule-row'><span>< 10 chars</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>10 a 19 chars</span><span style='color:#fca5a5'>2</span></div><div class='header-rule-row'><span>20 a 39 chars</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>40 a 49 chars</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>50 a 60 chars</span><span style='color:#10b981'>5</span></div><div class='header-rule-row'><span>> 60 chars</span><span style='color:#ef4444'>0</span></div></div>";
 $tipDesc = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: DESCRIÇÃO (Peso 3)</div><div class='header-rule-row'><span>< 200 chars</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>200 a 399</span><span style='color:#fca5a5'>2</span></div><div class='header-rule-row'><span>400 a 599</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>600 a 1999</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>2000 a 4000</span><span style='color:#10b981'>5</span></div><div class='header-rule-row'><span>> 4000 chars</span><span style='color:#ef4444'>0</span></div></div>";
-$tipImg  = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: IMAGENS (Peso 3)</div><div class='header-rule-row'><span>0 a 1 img</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>2 imgs</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>3 imgs</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>4 imgs</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>5 a 10 imgs</span><span style='color:#10b981'>5</span></div><div class='header-rule-row'><span>> 10 imgs</span><span style='color:#ef4444'>0</span></div></div>";
+$tipImg = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: IMAGENS (Peso 3)</div><div class='header-rule-row'><span>0 a 1 img</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>2 imgs</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>3 imgs</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>4 imgs</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>5 a 10 imgs</span><span style='color:#10b981'>5</span></div><div class='header-rule-row'><span>> 10 imgs</span><span style='color:#ef4444'>0</span></div></div>";
+$tipDim = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: DIMENSÕES (Peso 2)</div><div class='header-rule-row'><span>< 1200px</span><span style='color:#ef4444'>0</span></div><div class='header-rule-row'><span>Múltiplas Retang.</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>1 Retang.</span><span style='color:#eab308'>2</span></div><div class='header-rule-row'><span>Quadrada 1000px</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>Quadrada > 2400px</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>Quadrada 1200px</span><span style='color:#10b981'>5</span></div></div>";
 $tipSpec = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: ATRIBUTOS (Peso 1)</div><div class='header-rule-row'><span>< 2 itens</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>2 a 3 itens</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>4 a 6 itens</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>>= 7 itens</span><span style='color:#10b981'>5</span></div></div>";
 
 echo "
@@ -955,6 +1096,7 @@ echo "
             <div class='f-group'><label class='f-label'>Nota Img</label><input type='text' id='f_sc_img_mel' class='f-input'></div>
             <div class='f-group'><label class='f-label'>Nota Especs</label><input type='text' id='f_sc_spec_mel' class='f-input'></div>
             <div class='f-group'><label class='f-label'>Nota Geral</label><input type='text' id='f_sco_mel' class='f-input'></div>
+            <div class='f-group'><label class='f-label'>Nota Dimensão</label><input type='text' id='f_sc_dim_mel' class='f-input'></div>
         </div>
         <div class='f-actions'>
             <button class='f-btn-apply' onclick='applyFiltersMel()' title='Aplicar Filtros'><i class='material-icons'>search</i></button>
@@ -974,6 +1116,7 @@ echo "<div class='quality-header-mel'>
         <div style='cursor:help' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>TÍTULO<div class='tooltip-hidden-content' style='display:none'>$tipTit</div></div>
         <div style='cursor:help' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>DESC<div class='tooltip-hidden-content' style='display:none'>$tipDesc</div></div>
         <div style='cursor:help' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>IMG<div class='tooltip-hidden-content' style='display:none'>$tipImg</div></div>
+        <div style='cursor:help' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>DIM<div class='tooltip-hidden-content' style='display:none'>$tipDim</div></div>
         <div style='cursor:help' onmouseenter='window.showHTooltip(this)' onmousemove='window.moveHTooltip(event)' onmouseleave='window.hideHTooltip()'>ESPEC<div class='tooltip-hidden-content' style='display:none'>$tipSpec</div></div>
         <div>Geral</div>
         <div>Ações</div>
@@ -981,7 +1124,7 @@ echo "<div class='quality-header-mel'>
 
 echo "<div id='contentMel'><div class='start-msg' style='text-align:center; padding:50px; color:#9ca3af;'><i class='material-icons' style='font-size:48px; margin-bottom:10px; display:block;'>search</i><h2 style='font-size:18px; margin:0;'>Comece sua análise</h2><p>Utilize os filtros acima para carregar os produtos.</p></div></div>";
 
-$ajaxUrl  = isset($_SERVER['REQUEST_URI']) ? htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES, 'UTF-8') : '';
+$ajaxUrl = isset($_SERVER['REQUEST_URI']) ? htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES, 'UTF-8') : '';
 echo "<input type='hidden' id='hardness_total_mel' value='0'>";
 echo "<input type='hidden' id='hardness_pageSize_mel' value='" . (int) $limit . "'>";
 echo "<input type='hidden' id='hardness_ajaxUrl_mel' value='" . $ajaxUrl . "'>";
@@ -1161,7 +1304,7 @@ echo "<div id='demoMel'></div></div>";
 
 <script>
 
-    // --- [NOVAS] FUNÇÕES AUXILIARES DE MODAL ---
+    // --- FUNÇÕES AUXILIARES DE MODAL ---
     function customAlertMel(titulo, msg) {
         document.getElementById('alertTitleMel').innerText = titulo || 'Atenção';
         document.getElementById('alertMsgMel').innerHTML = msg; 
@@ -1222,7 +1365,9 @@ echo "<div id='demoMel'></div></div>";
                 f_est_liq: jQuery('#f_est_liq_mel').val(), f_est_tab: jQuery('#f_est_tab_mel').val(),
                 f_freq: jQuery('#f_freq_mel').val(), f_custo: jQuery('#f_custo_mel').val(), f_sco: jQuery('#f_sco_mel').val(),
                 f_sc_tit: jQuery('#f_sc_tit_mel').val(), f_sc_desc: jQuery('#f_sc_desc_mel').val(),
-                f_sc_img: jQuery('#f_sc_img_mel').val(), f_sc_spec: jQuery('#f_sc_spec_mel').val()
+                f_sc_img: jQuery('#f_sc_img_mel').val(), f_sc_spec: jQuery('#f_sc_spec_mel').val(),
+                // [NOVO] Adicionado f_sc_dim_mel ao objeto retornado
+                f_sc_dim: jQuery('#f_sc_dim_mel').val()
             };
         },
         saveState: function() {
@@ -1329,9 +1474,9 @@ echo "<div id='demoMel'></div></div>";
     function enviarAjaxCorrecaoMel(ids, tipo, obs, tags) {
         var url = jQuery('#hardness_ajaxUrl_mel').val(); 
         var sysIdVal = jQuery('#sys_base_divId_mel').val(); 
-        var sysRootVal = jQuery('#sys_base_divRoot_mel').val();
+        var sysRootVal = jQuery('#sys_base_divRoot_mel').val(); 
         
-        if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading();
+        if (sysIdVal && jQuery('#' + sysIdVal).length) jQuery('#' + sysIdVal).showLoading(); 
         
         jQuery.ajax({ 
             url: url, type: 'POST', dataType: 'json', 
@@ -1357,6 +1502,7 @@ echo "<div id='demoMel'></div></div>";
     const mVisMel = document.getElementById('modalVisMel'), vThumbsMel = document.getElementById('visThumbsMel'), vHeroMel = document.getElementById('visHeroMel'), vTitleMel = document.getElementById('visTitleMel'), vSkuMel = document.getElementById('visSkuMel'), vBrandMel = document.getElementById('visBrandMel'), vDescMel = document.getElementById('visDescMel'), vSpecsMel = document.getElementById('visSpecsContentMel');
     const elTSMel = document.getElementById('visTitleScoreMel'), elDSMel = document.getElementById('visDescScoreMel'), elISMel = document.getElementById('visImgScoreMel'), elASMel = document.getElementById('visAttrScoreMel');
     function getMetaNotaMel(n) { n = Number(n); if (n === 6) return { c: '#0098D3', t: 'Ótima' }; if (n === 5) return { c: '#10b981', t: 'Muito Boa' }; if (n === 4) return { c: '#84cc16', t: 'Boa' }; if (n === 3) return { c: '#eab308', t: 'Média' }; if (n === 2) return { c: '#fca5a5', t: 'Ruim' }; return { c: '#ef4444', t: 'Muito Ruim' }; }
+
     function abrirVisualizadorMel(sku) {
         var url = document.getElementById('hardness_ajaxUrl_mel').value;
         var sysIdVal = document.getElementById('sys_base_divId_mel').value;
@@ -1379,11 +1525,13 @@ echo "<div id='demoMel'></div></div>";
             },
             success: function (res) {
                 if (res.ok) {
+                    // 1. Textos Básicos
                     vTitleMel.innerText = res.titulo;
                     vSkuMel.innerText = res.sku;
                     vBrandMel.innerText = res.marca;
                     vDescMel.innerHTML = res.desc ? res.desc : '<em>Sem descrição.</em>';
 
+                    // 2. Pontuações e Cores
                     const mT = getMetaNotaMel(res.scores.tit);
                     elTSMel.style.backgroundColor = mT.c; elTSMel.innerText = res.scores.tit + ' - ' + mT.t;
 
@@ -1391,20 +1539,79 @@ echo "<div id='demoMel'></div></div>";
                     elDSMel.style.backgroundColor = mD.c; elDSMel.innerText = res.scores.desc + ' - ' + mD.t;
 
                     const mI = getMetaNotaMel(res.scores.img);
-                    elISMel.style.backgroundColor = mI.c; elISMel.innerText = 'Fotos: ' + res.scores.img + ' (' + mI.t + ')';
-
+                    // Aqui definimos a cor do badge da imagem principal baseado na nota de QUANTIDADE
+                    
                     const mA = getMetaNotaMel(res.scores.attr);
                     elASMel.style.backgroundColor = mA.c; elASMel.innerText = res.scores.attr + ' - ' + mA.t;
 
-                    vThumbsMel.innerHTML = '';
-                    if (res.imgs.length > 0) { vHeroMel.src = res.imgs[0]; } else { vHeroMel.src = ''; }
+                    // 3. Configura o Badge da Imagem Principal (CORREÇÃO AQUI)
+                    const elHeroBadge = document.getElementById('visImgScoreMel');
+                    elHeroBadge.style.backgroundColor = mI.c; 
+                    // Agora mostra: "5 - Muito Boa" (Nota de Quantidade + Label)
+                    elHeroBadge.innerText = res.scores.img + ' - ' + mI.t; 
 
+                    // 4. Limpa e recria as miniaturas
+                    vThumbsMel.innerHTML = '';
+                    
+                    if (res.imgs.length > 0) { 
+                        vHeroMel.src = res.imgs[0]; 
+                    } else { 
+                        vHeroMel.src = ''; 
+                        elHeroBadge.innerText = '--';
+                    }
+
+                    // --- LOOP DE MINIATURAS ---
                     res.imgs.forEach((url, idx) => {
-                        let img = document.createElement('img'); img.src = url; img.className = 'vis-mini'; if (idx === 0) img.classList.add('active');
-                        img.onclick = () => { vHeroMel.src = url; document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active')); img.classList.add('active'); };
-                        vThumbsMel.appendChild(img);
+                        // Container para agrupar Imagem + Texto
+                        let container = document.createElement('div');
+                        container.style.display = 'flex';
+                        container.style.flexDirection = 'column';
+                        container.style.alignItems = 'center';
+                        container.style.marginBottom = '12px'; // Espaço entre as fotos
+                        container.style.cursor = 'pointer';
+
+                        // A Imagem
+                        let img = document.createElement('img'); 
+                        img.src = url; 
+                        img.className = 'vis-mini'; 
+                        if (idx === 0) img.classList.add('active');
+
+                        // O Texto de Dimensão (Embaixo da foto)
+                        let dimLabel = document.createElement('div');
+                        dimLabel.style.fontSize = '10px';
+                        dimLabel.style.color = '#555';
+                        dimLabel.style.marginTop = '2px';
+                        dimLabel.style.textAlign = 'center';
+                        dimLabel.style.fontFamily = 'monospace';
+
+                        // Preenche o texto se houver detalhes
+                        if(res.imgs_details && res.imgs_details[idx]) {
+                            dimLabel.innerText = res.imgs_details[idx].w + 'x' + res.imgs_details[idx].h;
+                            
+                            // (Opcional) Pinta de vermelho se for menor que 1200px
+                            if(res.imgs_details[idx].w < 1200 || res.imgs_details[idx].h < 1200) {
+                                dimLabel.style.color = '#ef4444';
+                                dimLabel.style.fontWeight = 'bold';
+                            }
+                        } else {
+                            dimLabel.innerText = '--';
+                        }
+
+                        // Evento de Clique (Troca apenas a imagem grande)
+                        img.onclick = () => { 
+                            vHeroMel.src = url; 
+                            document.querySelectorAll('.vis-mini').forEach(el => el.classList.remove('active')); 
+                            img.classList.add('active'); 
+                        };
+                        
+                        // Monta o bloco
+                        container.onclick = img.onclick; // Clicar no container também ativa
+                        container.appendChild(img);
+                        container.appendChild(dimLabel); // Adiciona o tamanho embaixo
+                        vThumbsMel.appendChild(container);
                     });
 
+                    // 5. Tabela de Especificações
                     let h = '<table class="vis-specs-table">'; let has = false;
                     if (res.specs.EAN) { h += `<tr><td><strong>EAN:</strong> ${res.specs.EAN}</td></tr>`; has = true; }
                     if (res.specs.Garantia) { h += `<tr><td><strong>Garantia:</strong> ${res.specs.Garantia}</td></tr>`; has = true; }
@@ -1430,6 +1637,7 @@ echo "<div id='demoMel'></div></div>";
             }
         });
     }
+
     function fecharVisMel() { mVisMel.style.display = 'none'; }
     document.addEventListener('keydown', e => { if (e.key === "Escape") fecharVisMel() });
 
@@ -1585,9 +1793,9 @@ echo "<div id='demoMel'></div></div>";
             function() {
                 var url = jQuery('#hardness_ajaxUrl_mel').val(); 
                 var sysId = jQuery('#sys_base_divId_mel').val(); 
-                var sysRoot = jQuery('#sys_base_divRoot_mel').val();
+                var sysRoot = jQuery('#sys_base_divRoot_mel').val(); 
                 
-                if (sysId) jQuery('#' + sysId).showLoading();
+                if (sysId) jQuery('#' + sysId).showLoading(); 
                 
                 jQuery.ajax({
                     url: url, type: 'POST', dataType: 'json',
@@ -1629,9 +1837,9 @@ echo "<div id='demoMel'></div></div>";
                 
                 var url = jQuery('#hardness_ajaxUrl_mel').val(); 
                 var sysId = jQuery('#sys_base_divId_mel').val(); 
-                var sysRoot = jQuery('#sys_base_divRoot_mel').val();
+                var sysRoot = jQuery('#sys_base_divRoot_mel').val(); 
                 
-                if (sysId) jQuery('#' + sysId).showLoading();
+                if (sysId) jQuery('#' + sysId).showLoading(); 
                 
                 jQuery.ajax({
                     url: url, type: 'POST', dataType: 'json',
