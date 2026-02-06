@@ -89,16 +89,20 @@ if (!function_exists('analiseImagensMel')) {
     }
 }
 
-// --- FUNÇÃO DE ANÁLISE DE DIMENSÕES ---
+// --- [LÓGICA DIM.] ---
 if (!function_exists('analiseDimensoesMel')) {
     function analiseDimensoesMel($row) {
         $detalhes = [];
+        
         $qtdImagens = 0;
-        $quadradas = 0;
-        $minimo1200 = true;
-        $algumaMuitoGrande = false;
-        $todas1200Exact = true;
-        $todas1000Exact = true;
+        $qtdQuadradas = 0;
+        
+        // Contadores específicos
+        $qtdExatas1200 = 0;    
+        $qtdExatas1000 = 0;    
+        $qtdMaiorIgual1200 = 0; // Para validar a base da regra "Apenas 1"
+        $qtdMaior2400  = 0;    
+        $menorLadoGeral = 99999; 
 
         for ($i = 1; $i <= 10; $i++) {
             $w = (int)$row["D001E_Imagem_{$i}_width"];
@@ -106,61 +110,125 @@ if (!function_exists('analiseDimensoesMel')) {
             
             if ($w > 0 && $h > 0) {
                 $qtdImagens++;
-                $isQuadrada = ($w === $h);
-                if ($isQuadrada) $quadradas++;
                 
-                if ($w < 1200 || $h < 1200) $minimo1200 = false;
-                if ($w > 2400 || $h > 2400) $algumaMuitoGrande = true;
-                if ($w !== 1200 || $h !== 1200) $todas1200Exact = false;
-                if ($w !== 1000 || $h !== 1000) $todas1000Exact = false;
+                $ladoMenorImg = min($w, $h);
+                if ($ladoMenorImg < $menorLadoGeral) {
+                    $menorLadoGeral = $ladoMenorImg;
+                }
 
-                $detalhes[] = "Img $i: {$w}x{$h} " . ($isQuadrada ? "✅" : "❌");
+                $isQuadrada = ($w === $h);
+                if ($isQuadrada) {
+                    $qtdQuadradas++;
+                    
+                    if ($w === 1000) $qtdExatas1000++;
+                    
+                    // Contadores de qualidade alta
+                    if ($w >= 1200)  $qtdMaiorIgual1200++;
+                    if ($w === 1200) $qtdExatas1200++;
+                    if ($w > 2400)   $qtdMaior2400++;
+                }
+
+                $icon = $isQuadrada ? "🔲" : "Retângulo";
+                $detalhes[] = "Img $i: {$w}x{$h} ($icon)";
             }
         }
 
-        if ($qtdImagens === 0) return ['nota' => 0, 'valor' => 'Sem dimensões', 'regra' => 'Nenhuma imagem encontrada', 'peso' => 2, 'detalhes' => $detalhes];
+        if ($qtdImagens === 0) {
+            return ['nota' => 0, 'valor' => 'Vazio', 'regra' => 'Sem imagens', 'peso' => 2, 'detalhes' => $detalhes];
+        }
 
         $n = 0; 
         $regra = "";
 
+        // --- HIERARQUIA DE REGRAS ---
+
         switch (true) {
-            case ($quadradas === $qtdImagens && $todas1200Exact):
-                $n = 5; $regra = "Perfeito (1200px Quadrado)"; break;
-            case ($quadradas === $qtdImagens && $algumaMuitoGrande):
-                $n = 4; $regra = "Quadrada (Excesso > 2400px)"; break;
-            case ($quadradas === $qtdImagens && $todas1000Exact):
-                $n = 3; $regra = "Padrão antigo (1000px)"; break;
-            case (($qtdImagens - $quadradas) === 1):
-                $n = 2; $regra = "Apenas 1 não é quadrado"; break;
-            case (!$minimo1200):
-                $n = 0; $regra = "Lado < 1200px"; break;
-            case ($quadradas === 0):
-                $n = 1; $regra = "Nenhuma quadrada (>1200px)"; break;
-            case (($qtdImagens - $quadradas) > 1):
-                $n = 1; $regra = "Múltiplas não quadradas"; break;
+            // 1. PADRÃO ANTIGO (Nota 3): Todas quadradas e EXATAMENTE 1000x1000
+            // (Passa na frente para salvar imagens de 1000px da guilhotina do <1200)
+            case ($qtdQuadradas === $qtdImagens && $qtdExatas1000 === $qtdImagens):
+                $n = 3;
+                $regra = "Padrão Antigo (1000x1000)";
+                break;
+
+            // 2. EXCEÇÃO "APENAS 1" (Nota 2):
+            // - Tem mais de 1 imagem no total.
+            // - Exatamente 1 não é quadrada.
+            // - AS QUADRADAS DEVEM SER VÁLIDAS: Ou são 1000px OU são >= 1200px.
+            // Se as quadradas forem 1100px, essa condição falha e vai para o caso 3 (Nota 0).
+            case (
+                ($qtdImagens > 1) && 
+                ($qtdImagens - $qtdQuadradas) === 1 && 
+                (($qtdExatas1000 + $qtdMaiorIgual1200) === $qtdQuadradas)
+            ):
+                $n = 2;
+                $regra = "Apenas 1 não é quadrada";
+                break;
+
+            // 3. GUILHOTINA (Nota 0): Qualquer coisa menor que 1200px
+            // Se chegou aqui, não é o padrão 1000x1000 perfeito, e não é a exceção válida.
+            // Então 1000x899 (sozinho), 1100x1100, ou multiplos retângulos pequenos morrem aqui.
+            case ($menorLadoGeral < 1200):
+                $n = 0;
+                $regra = "Lado inferior a 1200px";
+                break;
+
+            // --- A PARTIR DAQUI, TUDO É >= 1200px ---
+
+            // 4. PERFEITO (Nota 5): Todas quadradas e 1200
+            case ($qtdQuadradas === $qtdImagens && $qtdExatas1200 === $qtdImagens):
+                $n = 5;
+                $regra = "Perfeito (Todas 1200x1200)";
+                break;
+
+            // 5. EXCESSO (Nota 4): Todas quadradas, alguma > 2400
+            case ($qtdQuadradas === $qtdImagens && $qtdMaior2400 > 0):
+                $n = 4;
+                $regra = "Quadrada Excesso (>2400)";
+                break;
+
+            // 6. PADRÃO RETANGULAR HD (Nota 1): Não são quadradas mas tudo > 1200
             default:
-                $n = 3; $regra = "Quadradas diversas (>1200)"; break;
+                $n = 1;
+                $regra = "Retangulares (>1200px)";
+                break;
         }
 
-        return ['nota' => $n, 'valor' => "$quadradas/$qtdImagens quadradas", 'regra' => $regra, 'peso' => 2, 'detalhes' => $detalhes];
+        return ['nota' => $n, 'valor' => "$qtdQuadradas/$qtdImagens Quadradas", 'regra' => $regra, 'peso' => 2, 'detalhes' => $detalhes];
     }
 }
-
 if (!function_exists('analiseAtributosMel')) {
     function analiseAtributosMel($row) {
         $count = 0;
+        // Verifica os 6 campos principais
         if (!empty($row['D001E_EAN']) && trim($row['D001E_EAN']) !== '') $count++;
         if (!empty($row['D001E_garantia']) && trim($row['D001E_garantia']) !== '') $count++;
         if (!empty($row['D001E_peso']) && trim($row['D001E_peso']) !== '') $count++;
         if (!empty($row['D001E_altura']) && trim($row['D001E_altura']) !== '') $count++;
         if (!empty($row['D001E_largura']) && trim($row['D001E_largura']) !== '') $count++;
         if (!empty($row['D001E_comprimento']) && trim($row['D001E_comprimento']) !== '') $count++;
-        $n = 0; $regra = "";
-        if ($count < 2) { $n = 1; $regra = "< 2 atrib."; } 
-        elseif ($count < 4) { $n = 3; $regra = "2-3 atrib."; } 
-        elseif ($count < 7) { $n = 4; $regra = "4-6 atrib."; } 
-        else { $n = 5; $regra = "Completo (>=7)"; }
-        return ['nota' => $n, 'valor' => $count . ' preench.', 'regra' => $regra, 'peso' => 1];
+        
+        $n = 0; 
+        $regra = "";
+        
+        // Lógica ajustada para teto máximo de 5
+        if ($count < 2) { 
+            $n = 1; 
+            $regra = "Muito Incompleto (< 2)"; 
+        } 
+        elseif ($count < 4) { 
+            $n = 3; 
+            $regra = "Básico (2-3 atrib.)"; 
+        } 
+        elseif ($count < 6) { 
+            $n = 4; 
+            $regra = "Quase Completo (4-5 atrib.)"; 
+        } 
+        else { 
+            $n = 5;
+            $regra = "Completo (Todos os 6)"; 
+        }
+        
+        return ['nota' => $n, 'valor' => $count . '/6 preench.', 'regra' => $regra, 'peso' => 1];
     }
 }
 
@@ -206,12 +274,12 @@ if (!function_exists('gerarTooltipGeralMel')) {
         $cDim = getCorNotaMel($resDim['nota']);
         
         return "<table class='tt-table'>
-            <tr><th colspan='2' class='tt-head'>CÁLCULO (DIVISOR 12)</th></tr>
-            <tr><td class='tt-row'>Título (x3)</td><td class='tt-val' style='color:$cT'>{$resT['nota']}</td></tr>
-            <tr><td class='tt-row'>Descrição (x3)</td><td class='tt-val' style='color:$cD'>{$resD['nota']}</td></tr>
-            <tr><td class='tt-row'>Imagens (x3)</td><td class='tt-val' style='color:$cI'>{$resI['nota']}</td></tr>
-            <tr><td class='tt-row'>Dimensões (x2)</td><td class='tt-val' style='color:$cDim'>{$resDim['nota']}</td></tr>
-            <tr><td class='tt-row'>Atributos (x1)</td><td class='tt-val' style='color:$cA'>{$resA['nota']}</td></tr>
+            <tr><th colspan='2' class='tt-head'>CÁLCULO</th></tr>
+            <tr><td class='tt-row'>Título</td><td class='tt-val' style='color:$cT'>{$resT['nota']}</td></tr>
+            <tr><td class='tt-row'>Descrição</td><td class='tt-val' style='color:$cD'>{$resD['nota']}</td></tr>
+            <tr><td class='tt-row'>Imagens</td><td class='tt-val' style='color:$cI'>{$resI['nota']}</td></tr>
+            <tr><td class='tt-row'>Dimensões</td><td class='tt-val' style='color:$cDim'>{$resDim['nota']}</td></tr>
+            <tr><td class='tt-row'>Atributos</td><td class='tt-val' style='color:$cA'>{$resA['nota']}</td></tr>
         </table>";
     }
 }
@@ -1070,7 +1138,18 @@ if (!$apiMode) echo $style;
 $tipTit = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: TÍTULO (Peso 3)</div><div class='header-rule-row'><span>< 10 chars</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>10 a 19 chars</span><span style='color:#fca5a5'>2</span></div><div class='header-rule-row'><span>20 a 39 chars</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>40 a 49 chars</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>50 a 60 chars</span><span style='color:#10b981'>5</span></div><div class='header-rule-row'><span>> 60 chars</span><span style='color:#ef4444'>0</span></div></div>";
 $tipDesc = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: DESCRIÇÃO (Peso 3)</div><div class='header-rule-row'><span>< 200 chars</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>200 a 399</span><span style='color:#fca5a5'>2</span></div><div class='header-rule-row'><span>400 a 599</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>600 a 1999</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>2000 a 4000</span><span style='color:#10b981'>5</span></div><div class='header-rule-row'><span>> 4000 chars</span><span style='color:#ef4444'>0</span></div></div>";
 $tipImg = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: IMAGENS (Peso 3)</div><div class='header-rule-row'><span>0 a 1 img</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>2 imgs</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>3 imgs</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>4 imgs</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>5 a 10 imgs</span><span style='color:#10b981'>5</span></div><div class='header-rule-row'><span>> 10 imgs</span><span style='color:#ef4444'>0</span></div></div>";
-$tipDim = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: DIMENSÕES (Peso 2)</div><div class='header-rule-row'><span>< 1200px</span><span style='color:#ef4444'>0</span></div><div class='header-rule-row'><span>Múltiplas Retang.</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>1 Retang.</span><span style='color:#eab308'>2</span></div><div class='header-rule-row'><span>Quadrada 1000px</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>Quadrada > 2400px</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>Quadrada 1200px</span><span style='color:#10b981'>5</span></div></div>";
+
+// [NOVO] Tooltip Header Dimensões
+$tipDim = "<div class='header-tooltip-content'>
+<div class='header-tooltip-title'>REGRAS: DIMENSÕES (Peso 2)</div>
+<div class='header-rule-row'><span>< 1200px (Multiplos erros)</span><span style='color:#ef4444'>0</span></div>
+<div class='header-rule-row'><span>Retangulares > 1200px</span><span style='color:#ef4444'>1</span></div>
+<div class='header-rule-row'><span>Apenas 1 não Quadrada</span><span style='color:#fca5a5'>2</span></div>
+<div class='header-rule-row'><span>Todas 1000x1000 (Antigo)</span><span style='color:#eab308'>3</span></div>
+<div class='header-rule-row'><span>Todas Quad. (>2400)</span><span style='color:#84cc16'>4</span></div>
+<div class='header-rule-row'><span>Todas 1200x1200</span><span style='color:#10b981'>5</span></div>
+</div>";
+
 $tipSpec = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: ATRIBUTOS (Peso 1)</div><div class='header-rule-row'><span>< 2 itens</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>2 a 3 itens</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>4 a 6 itens</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>>= 7 itens</span><span style='color:#10b981'>5</span></div></div>";
 
 echo "
