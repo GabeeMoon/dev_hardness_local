@@ -83,6 +83,7 @@ if (!function_exists('analiseDescricaoMel')) {
     $len = mb_strlen($txt);
     $n = 0;
     $regra = "";
+    
     if ($len < 200) {
       $n = 1;
       $regra = "< 200 chars";
@@ -92,16 +93,22 @@ if (!function_exists('analiseDescricaoMel')) {
     } elseif ($len < 600) {
       $n = 3;
       $regra = "400-599 chars";
-    } elseif ($len < 2000) {
+      
+    // --- ALTERAÇÃO AQUI (Nota 4) ---
+    } elseif ($len < 1500) { // Antes era 2000
       $n = 4;
-      $regra = "600-1999 chars";
+      $regra = "600-1499 chars"; // Texto atualizado
+      
+    // --- ALTERAÇÃO AQUI (Nota 5) ---
     } elseif ($len <= 4000) {
       $n = 5;
-      $regra = "2000-4000 chars";
+      $regra = "1500-4000 chars"; // Texto atualizado (pega >= 1500)
+      
     } else {
       $n = 0;
       $regra = "> 4000 chars (Excesso)";
     }
+    
     return ['nota' => $n, 'valor' => $len . ' chars', 'regra' => $regra, 'peso' => 3];
   }
 }
@@ -1440,7 +1447,15 @@ if (!$apiMode) echo $style;
 
 // Tooltips para Header com Regras Claras
 $tipTit = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: TÍTULO (Peso 3)</div><div class='header-rule-row'><span>< 10 chars</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>10 a 19 chars</span><span style='color:#fca5a5'>2</span></div><div class='header-rule-row'><span>20 a 39 chars</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>40 a 49 chars</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>50 a 60 chars</span><span style='color:#10b981'>5</span></div><div class='header-rule-row'><span>> 60 chars</span><span style='color:#ef4444'>0</span></div></div>";
-$tipDesc = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: DESCRIÇÃO (Peso 3)</div><div class='header-rule-row'><span>< 200 chars</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>200 a 399</span><span style='color:#fca5a5'>2</span></div><div class='header-rule-row'><span>400 a 599</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>600 a 1999</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>2000 a 4000</span><span style='color:#10b981'>5</span></div><div class='header-rule-row'><span>> 4000 chars</span><span style='color:#ef4444'>0</span></div></div>";
+
+$tipDesc = "<div class='header-tooltip-content'>
+<div class='header-tooltip-title'>REGRAS: DESCRIÇÃO (Peso 3)</div>
+<div class='header-rule-row'><span>< 200 chars</span><span style='color:#ef4444'>1</span></div>
+<div class='header-rule-row'><span>200 a 399</span><span style='color:#fca5a5'>2</span></div>
+<div class='header-rule-row'><span>400 a 599</span><span style='color:#eab308'>3</span></div>
+<div class='header-rule-row'><span>600 a 1499</span><span style='color:#84cc16'>4</span></div> <div class='header-rule-row'><span>1500 a 4000</span><span style='color:#10b981'>5</span></div> <div class='header-rule-row'><span>> 4000 chars</span><span style='color:#ef4444'>0</span></div>
+</div>";
+
 $tipImg = "<div class='header-tooltip-content'><div class='header-tooltip-title'>REGRAS: IMAGENS (Peso 3)</div><div class='header-rule-row'><span>0 a 1 img</span><span style='color:#ef4444'>1</span></div><div class='header-rule-row'><span>2 imgs</span><span style='color:#eab308'>3</span></div><div class='header-rule-row'><span>3 imgs</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>4 imgs</span><span style='color:#84cc16'>4</span></div><div class='header-rule-row'><span>5 a 10 imgs</span><span style='color:#10b981'>5</span></div><div class='header-rule-row'><span>> 10 imgs</span><span style='color:#ef4444'>0</span></div></div>";
 
 // [NOVO] Tooltip Header Dimensões
